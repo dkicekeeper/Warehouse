@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: 1
 size: l
@@ -7,6 +7,7 @@ created: 2026-11-26
 updated: 2026-11-26
 plan: plans/2026-11-26-project-standard.md
 branch: claude/wizardly-ptolemy-l81oa3
+pr: 4
 ---
 # Перевести все репозитории на стандарт ведения проекта
 
