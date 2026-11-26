@@ -6,6 +6,7 @@ size: m
 created: 2026-11-26
 updated: 2026-11-26
 branch: claude/wizardly-ptolemy-l81oa3
+pr: 8
 ---
 # Новый вид панели по макету
 
