@@ -29,7 +29,8 @@ async function signedIn(
     deviceScaleFactor: o.scale ?? 1,
     locale: 'ru-RU',
   });
-  await context.addCookies([{ name: 'wh_session', value: 'x', url: BASE }]);
+  // A `__Host-` cookie cannot be stored for plain http, so the test sends it as a header instead.
+  await context.setExtraHTTPHeaders({ cookie: '__Host-wh_session=x' });
   const page = await context.newPage();
   const posts: { url: string; body: string | null }[] = [];
   await page.route('**/api/board', (route) => route.fulfill({ json: board }));
@@ -77,7 +78,7 @@ describe('a stranger', () => {
 
   it('a made-up sign-in cookie gets the empty shell and then the sign-in page, never data', async () => {
     context = await browser.newContext();
-    await context.addCookies([{ name: 'wh_session', value: 'forged', url: BASE }]);
+    await context.setExtraHTTPHeaders({ cookie: '__Host-wh_session=forged' });
     const page = await context.newPage();
     const shell = await (await context.request.get(BASE)).text();
     for (const word of ['Tenra', 'Dalada', 'Platina', 'Ждёт вас']) expect(shell).not.toContain(word);

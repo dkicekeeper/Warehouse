@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Sql } from './pg';
 
 /**
@@ -171,31 +172,48 @@ select r, p.id from p, (values ('dkicekeeper/Tenra'), ('dkicekeeper/tenra-assets
 on conflict (full_name) do nothing;
 `;
 
+const SESSIONS_VALID_AFTER = `
+alter table settings add column sessions_valid_after timestamptz;
+`;
+
 export const MIGRATIONS: Migration[] = [
   { name: '0001_schema', sql: SCHEMA },
   { name: '0002_seed_projects', sql: SEED_PROJECTS },
+  { name: '0003_sessions_valid_after', sql: SESSIONS_VALID_AFTER },
 ];
 
+const TAG = '$wh_migration$';
+
 /**
- * Applies the migrations that have not run yet, each in its own transaction together with the
- * record that it ran. Returns the names it applied.
+ * Applies the migrations that have not run yet and returns the names this call applied.
+ *
+ * Each migration runs as one DO block — a single statement, so it is atomic on any driver and any
+ * pooler, with nothing left half-open on a pooled connection if it fails. Inside, an advisory lock
+ * makes concurrent callers take turns, and whoever comes second sees the record and does nothing.
+ * (A consequence: a migration is PL/pgSQL statements, so no bare \`select …;\` — use \`perform\`.)
  */
 export async function migrate(sql: Sql, migrations: Migration[] = MIGRATIONS): Promise<string[]> {
   await sql.exec(
-    'create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())',
+    `create table if not exists schema_migrations (
+       name text primary key, applied_at timestamptz not null default now(), applied_by text)`,
   );
   const done = new Set((await sql.query<{ name: string }>('select name from schema_migrations')).map((r) => r.name));
-  const applied: string[] = [];
+  const runId = randomUUID();
   for (const m of migrations) {
     if (done.has(m.name)) continue;
-    if (!/^[\w-]+$/.test(m.name)) throw new Error(`bad migration name: ${m.name}`);
-    try {
-      await sql.exec(`begin;\n${m.sql}\n;insert into schema_migrations (name) values ('${m.name}');\ncommit;`);
-    } catch (err) {
-      await sql.exec('rollback').catch(() => {});
-      throw err;
-    }
-    applied.push(m.name);
+    if (!/^[\w-]+$/.test(m.name) || m.sql.includes(TAG)) throw new Error(`bad migration: ${m.name}`);
+    await sql.exec(
+      `do ${TAG}
+       begin
+         perform pg_advisory_xact_lock(72031126);
+         if exists (select 1 from schema_migrations where name = '${m.name}') then
+           return;
+         end if;
+         ${m.sql.trim().replace(/;+$/, '')};
+         insert into schema_migrations (name, applied_by) values ('${m.name}', '${runId}');
+       end ${TAG};`,
+    );
   }
-  return applied;
+  const mine = await sql.query<{ name: string }>('select name from schema_migrations where applied_by = $1 order by name', [runId]);
+  return mine.map((r) => r.name);
 }

@@ -9,6 +9,8 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
+permissions: {}
+
 concurrency:
   group: tick
   cancel-in-progress: false
@@ -29,8 +31,9 @@ jobs:
             exit 0
           fi
           # Only the status code is printed: this repository's logs are public, and the answer can
-          # name private repositories. The details are on the service's settings page.
-          code=$(curl --silent --show-error --max-time 90 --output /dev/null --write-out '%{http_code}' \
+          # name private repositories; curl's own errors are silenced too, since they quote the host.
+          # The details are on the service's settings page.
+          code=$(curl --silent --max-time 90 --output /dev/null --write-out '%{http_code}' \
             --request POST --header "Authorization: Bearer $CRON_TOKEN" "$WAREHOUSE_URL/api/cron/tick")
           echo "HTTP $code"
           test "$code" = "200"

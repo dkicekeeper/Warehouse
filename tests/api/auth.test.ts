@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { handleCallback, handleLogin, handleSignout, isOwnerRequest, type AuthConfig } from '@/lib/api/auth';
+import { handleCallback, handleLogin, handleSignout, isOwnerRequest, ownerSession, type AuthConfig } from '@/lib/api/auth';
 import { sealSession } from '@/lib/auth/session';
 
 const NOW = new Date('2026-11-26T07:00:00Z');
@@ -43,8 +43,8 @@ describe('GET /auth/login', () => {
     expect(to.searchParams.get('redirect_uri')).toBe('https://w.example/auth/callback');
     const state = to.searchParams.get('state') ?? '';
     expect(state.length).toBeGreaterThanOrEqual(32);
-    const cookie = cookieOf(res, 'wh_state') ?? '';
-    expect(cookie).toContain(`wh_state=${state}`);
+    const cookie = cookieOf(res, '__Host-wh_state') ?? '';
+    expect(cookie).toContain(`__Host-wh_state=${state}`);
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/Secure/i);
     expect(cookie).toMatch(/SameSite=Lax/i);
@@ -60,7 +60,7 @@ describe('GET /auth/login', () => {
 describe('GET /auth/callback', () => {
   const callback = (query: string, stateCookie: string | null, c = config()) =>
     handleCallback(
-      new Request(`https://w.example/auth/callback${query}`, { headers: stateCookie ? { cookie: `wh_state=${stateCookie}` } : {} }),
+      new Request(`https://w.example/auth/callback${query}`, { headers: stateCookie ? { cookie: `__Host-wh_state=${stateCookie}` } : {} }),
       c,
     );
 
@@ -69,16 +69,16 @@ describe('GET /auth/callback', () => {
     const res = await callback('?code=abc&state=st4te', 'st4te', c);
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe('https://w.example/');
-    const cookie = cookieOf(res, 'wh_session') ?? '';
+    const cookie = cookieOf(res, '__Host-wh_session') ?? '';
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/Secure/i);
     expect(cookie).toMatch(/SameSite=Lax/i);
     expect(cookie).toMatch(/Max-Age=2592000/);
     expect(cookie).toMatch(/Path=\//);
-    const again = new Request('https://w.example/api/board', { headers: { cookie: `wh_session=${valueOf(res, 'wh_session')}` } });
+    const again = new Request('https://w.example/api/board', { headers: { cookie: `__Host-wh_session=${valueOf(res, '__Host-wh_session')}` } });
     expect(isOwnerRequest(again, c)).toBe(true);
     // The state cookie is spent.
-    expect(cookieOf(res, 'wh_state')).toMatch(/Max-Age=0/);
+    expect(cookieOf(res, '__Host-wh_state')).toMatch(/Max-Age=0/);
   });
 
   it('exchanges the code with the app’s secret and reads the user with the token it got', async () => {
@@ -106,7 +106,7 @@ describe('GET /auth/callback', () => {
     const res = await callback(query, state, c);
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe('https://w.example/login?denied=1');
-    expect(cookieOf(res, 'wh_session')).toBeNull();
+    expect(cookieOf(res, '__Host-wh_session')).toBeNull();
   });
 
   it('does not call GitHub at all when the state is wrong', async () => {
@@ -122,16 +122,49 @@ describe('isOwnerRequest', () => {
 
   it('accepts only a valid session for the configured owner', () => {
     const good = sealSession('11180079', c.sessionSecret, NOW);
-    expect(isOwnerRequest(req(`other=1; wh_session=${good}; x=y`), c)).toBe(true);
-    expect(isOwnerRequest(req(`wh_session=${sealSession('999', c.sessionSecret, NOW)}`), c)).toBe(false);
-    expect(isOwnerRequest(req('wh_session=forged'), c)).toBe(false);
+    expect(isOwnerRequest(req(`other=1; __Host-wh_session=${good}; x=y`), c)).toBe(true);
+    expect(isOwnerRequest(req(`__Host-wh_session=${sealSession('999', c.sessionSecret, NOW)}`), c)).toBe(false);
+    expect(isOwnerRequest(req('__Host-wh_session=forged'), c)).toBe(false);
     expect(isOwnerRequest(req(), c)).toBe(false);
   });
 
   it('a session sealed for a previous owner id stops working when the owner changes', () => {
-    const cookie = `wh_session=${sealSession('11180079', c.sessionSecret, NOW)}`;
+    const cookie = `__Host-wh_session=${sealSession('11180079', c.sessionSecret, NOW)}`;
     expect(isOwnerRequest(req(cookie), config({ ownerGithubId: '42' }))).toBe(false);
     expect(isOwnerRequest(req(cookie), config({ ownerGithubId: '' }))).toBe(false);
+  });
+});
+
+describe('requests that change something', () => {
+  const c = config();
+  const cookie = `__Host-wh_session=${sealSession('11180079', c.sessionSecret, NOW)}`;
+  const post = (headers: Record<string, string>) =>
+    new Request('https://w.example/api/items/1', { method: 'POST', headers: { cookie, ...headers } });
+
+  it('are accepted only from the service’s own pages', () => {
+    expect(isOwnerRequest(post({ origin: 'https://w.example' }), c)).toBe(true);
+    expect(isOwnerRequest(post({ origin: 'https://evil.example' }), c)).toBe(false);
+    expect(isOwnerRequest(post({ origin: 'https://sibling.w.example' }), c)).toBe(false);
+    expect(isOwnerRequest(post({ origin: 'null' }), c)).toBe(false);
+    expect(isOwnerRequest(post({}), c)).toBe(false);
+  });
+
+  it('reads need no Origin: browsers do not send one on a same-origin GET', () => {
+    expect(isOwnerRequest(new Request('https://w.example/api/board', { headers: { cookie } }), c)).toBe(true);
+  });
+});
+
+describe('ownerSession', () => {
+  it('says when the session was issued, so sign-out can end every earlier one', () => {
+    const c = config();
+    const req = new Request('https://w.example/api/board', { headers: { cookie: `__Host-wh_session=${sealSession('11180079', c.sessionSecret, NOW)}` } });
+    expect(ownerSession(req, c)).toEqual({ issuedAt: NOW });
+  });
+});
+
+describe('GET /auth/login without an address', () => {
+  it('is not configured: a relative redirect_uri must never reach GitHub', () => {
+    expect(handleLogin(config({ baseUrl: '' })).status).toBe(503);
   });
 });
 
@@ -140,6 +173,6 @@ describe('POST /auth/signout', () => {
     const res = handleSignout(config());
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe('https://w.example/login');
-    expect(cookieOf(res, 'wh_session')).toMatch(/Max-Age=0/);
+    expect(cookieOf(res, '__Host-wh_session')).toMatch(/Max-Age=0/);
   });
 });

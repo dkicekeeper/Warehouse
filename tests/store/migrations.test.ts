@@ -39,6 +39,19 @@ it('a migration that fails leaves no trace and can be retried', async () => {
   expect(await migrate(sql)).toEqual(MIGRATIONS.slice(1).map((m) => m.name));
 });
 
+it('after a failed migration the same connection still works', async () => {
+  const sql = fresh();
+  await expect(migrate(sql, [{ name: '9999_broken', sql: 'select nope();' }])).rejects.toThrow();
+  expect(await sql.query('select 1 as ok')).toEqual([{ ok: 1 }]);
+});
+
+it('two runs at once apply each migration once and neither fails', async () => {
+  const sql = fresh();
+  const [a, b] = await Promise.all([migrate(sql), migrate(sql)]);
+  expect([...a, ...b].sort()).toEqual(MIGRATIONS.map((m) => m.name));
+  expect((await new PgStore(sql).loadSnapshot(new Date())).projects).toHaveLength(2);
+});
+
 it('migration names are unique and ordered', () => {
   const names = MIGRATIONS.map((m) => m.name);
   expect([...names].sort()).toEqual(names);

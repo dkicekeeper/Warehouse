@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readSession, sealSession, SESSION_COOKIE, SESSION_DAYS } from '@/lib/auth/session';
 
-const STATE_COOKIE = 'wh_state';
+const STATE_COOKIE = '__Host-wh_state';
 const STATE_SECONDS = 600;
 
 export interface AuthConfig {
@@ -39,16 +39,29 @@ const same = (a: string, b: string) => {
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
-/** The real access check, done next to the data: a valid session for the configured owner. */
-export function isOwnerRequest(req: Request, config: Pick<AuthConfig, 'sessionSecret' | 'ownerGithubId' | 'now'>): boolean {
-  if (!config.ownerGithubId) return false;
+type OwnerCheck = Pick<AuthConfig, 'sessionSecret' | 'ownerGithubId' | 'now' | 'baseUrl'>;
+
+/**
+ * The access check, done next to the data: a valid session for the configured owner. A request
+ * that changes something must also come from the service's own pages — the cookie is SameSite=Lax,
+ * which stops other sites but not a sibling subdomain, so the Origin header is checked as well.
+ * Returns when the session was issued, so the caller can refuse sessions ended by a sign-out.
+ */
+export function ownerSession(req: Request, config: OwnerCheck): { issuedAt: Date } | null {
+  if (!config.ownerGithubId) return null;
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    if (!config.baseUrl || req.headers.get('origin') !== config.baseUrl) return null;
+  }
   const value = readCookie(req, SESSION_COOKIE);
-  return value !== null && readSession(value, config.sessionSecret, config.now) === config.ownerGithubId;
+  const session = value === null ? null : readSession(value, config.sessionSecret, config.now);
+  return session && session.sub === config.ownerGithubId ? { issuedAt: session.issuedAt } : null;
 }
+
+export const isOwnerRequest = (req: Request, config: OwnerCheck): boolean => ownerSession(req, config) !== null;
 
 /** Starts sign-in: off to GitHub, with a one-time state kept in a cookie to recognise the way back. */
 export function handleLogin(config: AuthConfig): Response {
-  if (!config.clientId || !config.clientSecret || !config.sessionSecret || !config.ownerGithubId) {
+  if (!config.clientId || !config.clientSecret || !config.sessionSecret || !config.ownerGithubId || !config.baseUrl) {
     return new Response('Вход не настроен', { status: 503 });
   }
   const state = randomBytes(24).toString('base64url');

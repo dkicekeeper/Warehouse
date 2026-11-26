@@ -133,6 +133,7 @@ const TIMESTAMP_COLUMNS = new Set([
   'resolved_at',
   'last_digest_at',
   'telegram_link_expires_at',
+  'sessions_valid_after',
 ]);
 
 /** `col = $n` assignments for a dynamic update, casting timestamps. */
@@ -189,6 +190,7 @@ function settingsColumns(p: Partial<Settings>): Record<string, unknown> {
   if ('observedMacosLimit' in p) c.observed_macos_limit = p.observedMacosLimit;
   if ('telegramChatId' in p) c.telegram_chat_id = p.telegramChatId;
   if ('lastDigestAt' in p) c.last_digest_at = p.lastDigestAt ?? null;
+  if ('sessionsValidAfter' in p) c.sessions_valid_after = p.sessionsValidAfter ?? null;
   if ('telegramLinkCode' in p) {
     c.telegram_link_code = p.telegramLinkCode?.code ?? null;
     c.telegram_link_expires_at = p.telegramLinkCode?.expiresAt ?? null;
@@ -269,6 +271,7 @@ export class PgStore implements Store {
       telegramLinkCode: r.telegram_link_code
         ? { code: String(r.telegram_link_code), expiresAt: must(r.telegram_link_expires_at) }
         : null,
+      sessionsValidAfter: date(r.sessions_valid_after),
     };
   }
 

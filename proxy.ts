@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * expiry and owner id are verified.
  */
 export function proxy(req: NextRequest) {
-  const signedIn = req.cookies.has('wh_session');
+  const signedIn = req.cookies.has('__Host-wh_session');
   if (signedIn) return NextResponse.next();
   return NextResponse.redirect(new URL('/login', req.url));
 }

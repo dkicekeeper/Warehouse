@@ -7,13 +7,13 @@ const later = (days: number) => new Date(NOW.getTime() + days * 86_400_000);
 
 describe('session cookie', () => {
   it('round-trips the GitHub id it was sealed with', () => {
-    expect(readSession(sealSession('11180079', SECRET, NOW), SECRET, NOW)).toBe('11180079');
+    expect(readSession(sealSession('11180079', SECRET, NOW), SECRET, NOW)).toEqual({ sub: '11180079', issuedAt: NOW });
   });
 
   it('lasts 30 days and not a second longer', () => {
     const cookie = sealSession('1', SECRET, NOW);
     expect(SESSION_DAYS).toBe(30);
-    expect(readSession(cookie, SECRET, later(29.9))).toBe('1');
+    expect(readSession(cookie, SECRET, later(29.9))?.sub).toBe('1');
     expect(readSession(cookie, SECRET, later(30.01))).toBeNull();
   });
 

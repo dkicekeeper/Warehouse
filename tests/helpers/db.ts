@@ -3,8 +3,10 @@ import { postgresSql } from '@/lib/store/db';
 import { MIGRATIONS } from '@/lib/store/migrations';
 import { PgStore, type Sql } from '@/lib/store/pg';
 
-/** The schema alone; tests seed their own projects. */
-const SCHEMA = MIGRATIONS[0]?.sql ?? '';
+/** Every schema migration, without the seed: tests bring their own projects. */
+const SCHEMA = MIGRATIONS.filter((m) => !m.name.includes('seed'))
+  .map((m) => m.sql)
+  .join(';\n');
 
 const TABLES = ['items', 'events', 'sources', 'jobs', 'runs', 'pull_requests', 'sessions', 'repos', 'projects', 'settings'];
 const RESET = `truncate ${TABLES.join(', ')} cascade; insert into settings (id) values (1);`;

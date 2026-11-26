@@ -26,7 +26,8 @@ afterEach(() => context?.close());
 
 async function open() {
   context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'ru-RU' });
-  await context.addCookies([{ name: 'wh_session', value: 'x', url: BASE }]);
+  // A `__Host-` cookie cannot be stored for plain http, so the test sends it as a header instead.
+  await context.setExtraHTTPHeaders({ cookie: '__Host-wh_session=x' });
   const page = await context.newPage();
   const posts: unknown[] = [];
   await page.route('**/api/settings', (route) => {

@@ -31,6 +31,12 @@ describe('settings', () => {
     expect(await store.getSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('remembers the moment before which every session is void', async () => {
+    expect((await store.getSettings()).sessionsValidAfter).toBeNull();
+    await store.patchSettings({ sessionsValidAfter: NOW });
+    expect((await store.getSettings()).sessionsValidAfter).toEqual(NOW);
+  });
+
   it('patch keeps the rest', async () => {
     const code = { code: 'abc', expiresAt: minutesFromNow(15) };
     await store.patchSettings({ macosLimit: 3, quietStart: '22:00', telegramLinkCode: code, lastDigestAt: NOW });

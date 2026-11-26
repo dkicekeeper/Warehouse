@@ -96,6 +96,8 @@ export interface Settings {
   lastDigestAt: Date | null;
   /** One-time code that binds the owner's Telegram chat. */
   telegramLinkCode: { code: string; expiresAt: Date } | null;
+  /** Set by sign-out: sessions issued before this moment are no longer accepted. */
+  sessionsValidAfter: Date | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -109,6 +111,7 @@ export const DEFAULT_SETTINGS: Settings = {
   telegramChatId: null,
   lastDigestAt: null,
   telegramLinkCode: null,
+  sessionsValidAfter: null,
 };
 
 export interface Snapshot {
