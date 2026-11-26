@@ -407,11 +407,45 @@ def check_records(root, tree, ignore):
     return found
 
 
+LINK = re.compile(r"\[[^\]]*\]\(\s*(<[^>]*>|[^)\s]+)(?:\s+\"[^\"]*\")?\s*\)")
+INLINE_CODE = re.compile(r"`[^`]*`")
+
+
+def check_links(root, ignore):
+    """Относительные ссылки CLAUDE.md и актуальных документов ведут на существующие файлы."""
+    found = []
+    files = [rel for rel in walk_docs(root, ignore) if rel.endswith(".md") and not rel.startswith("docs/archive/")]
+    if os.path.isfile(os.path.join(root, "CLAUDE.md")):
+        files.append("CLAUDE.md")
+    top = os.path.realpath(root)
+    for rel in files:
+        in_code = False
+        for number, line in enumerate(read_text(os.path.join(root, rel)).split("\n"), 1):
+            if line.lstrip().startswith("```") or line.lstrip().startswith("~~~"):
+                in_code = not in_code
+                continue
+            if in_code:
+                continue
+            for match in LINK.finditer(INLINE_CODE.sub("", line)):
+                target = match.group(1).strip("<>").split("#", 1)[0]
+                if not target or target.startswith("/") or re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", target):
+                    continue
+                target = re.sub(r"%([0-9A-Fa-f]{2})", lambda m: chr(int(m.group(1), 16)), target)
+                full = os.path.realpath(os.path.join(root, os.path.dirname(rel), target))
+                if full != top and not full.startswith(top + os.sep):
+                    continue  # ведёт в другой репозиторий: отсюда не проверить
+                if not os.path.exists(full):
+                    found.append(("%s:%d" % (rel, number), "link",
+                                  "ссылка на «%s» никуда не ведёт. Исправьте путь или уберите ссылку" % target))
+    return found
+
+
 def run_checks(root, tree):
     ignore, found = load_ignore(root)
     found += check_headers(tree)
     found += check_structure(root, tree, ignore)
     found += check_records(root, tree, ignore)
+    found += check_links(root, ignore)
     return found
 
 
