@@ -29,6 +29,43 @@ describe('isWorking', () => {
   });
 });
 
+describe('a request the session has moved past', () => {
+  // The hook can go quiet (the session restarted outside the repository): a request then stays
+  // on the board for hours while the session pushes on. New builds on its branch give it away.
+  const asking = () => session({ state: 'needs_owner', stateText: 'какие PR мержить', reportedAt: minutesAgo(420) });
+
+  it('turns into a note once the session pushed again after asking', () => {
+    const s = asking();
+    const [item] = attention({ sessions: [s], runs: [run({ createdAt: minutesAgo(30) })] });
+    expect(item).toMatchObject({
+      kind: 'session_stale',
+      level: 'note',
+      text: 'отчёт устарел: «какие PR мержить», а сессия пушила позже',
+      since: minutesAgo(30),
+    });
+  });
+
+  it('stays a request when nothing happened on its branch after the report', () => {
+    const s = asking();
+    expect(kinds({ sessions: [s], runs: [run({ createdAt: minutesAgo(500) })] })).toEqual(['session_needs_owner']);
+  });
+
+  it('ignores builds a few minutes after the report: the push and the report end the same turn', () => {
+    const s = session({ state: 'needs_owner', stateText: 'смержить PR #3', reportedAt: minutesAgo(20) });
+    expect(kinds({ sessions: [s], runs: [run({ createdAt: minutesAgo(15) })] })).toEqual(['session_needs_owner']);
+  });
+
+  it('ignores builds of other branches, other repositories and scheduled runs', () => {
+    const s = asking();
+    const runs = [
+      run({ createdAt: minutesAgo(30), branch: 'main' }),
+      run({ createdAt: minutesAgo(30), repo: 'o/other' }),
+      run({ createdAt: minutesAgo(30), event: 'schedule' }),
+    ];
+    expect(kinds({ sessions: [s], runs })).toEqual(['session_needs_owner']);
+  });
+});
+
 describe('session items', () => {
   it('needs_owner → a request carrying the status text', () => {
     const s = session({ state: 'needs_owner', stateText: 'смержить PR #3', reportedAt: minutesAgo(9) });

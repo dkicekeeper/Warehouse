@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -48,7 +48,8 @@ function run(
     const started = Date.now();
     const child = spawn('python3', [SCRIPT], {
       cwd,
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, NO_PROXY: '127.0.0.1', WAREHOUSE_URL: url, ...env } as unknown as NodeJS.ProcessEnv,
+      // A temp folder of its own per run: the hook remembers what it sent there, so runs must not share it.
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, NO_PROXY: '127.0.0.1', WAREHOUSE_URL: url, TMPDIR: mkdtempSync(join(tmpdir(), 'wh-tmp-')), ...env } as unknown as NodeJS.ProcessEnv,
     });
     let stdout = '';
     let stderr = '';
@@ -186,6 +187,29 @@ describe('warehouse-report hook', () => {
     expect(received[0]?.body.repo).toBe('dkicekeeper/Tenra');
   });
 
+  it('from a folder above several repositories reports the one the session worked in last', async () => {
+    // A session with several repositories starts in the folder that holds them (/home/user).
+    const top = mkdtempSync(join(tmpdir(), 'wh-multi-'));
+    const make = (name: string, remote: string, branch: string) => {
+      const dir = join(top, name);
+      execFileSync('git', ['init', '-q', '-b', 'main', dir]);
+      const git = (...args: string[]) =>
+        execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' });
+      git('remote', 'add', 'origin', remote);
+      git('commit', '-q', '--allow-empty', '-m', 'init');
+      git('checkout', '-q', '-b', branch);
+      return git;
+    };
+    make('tenra', 'https://github.com/dkicekeeper/Tenra.git', 'claude/old');
+    make('Warehouse', 'https://github.com/dkicekeeper/Warehouse.git', 'claude/new');
+    writeFileSync(join(top, 'notes.txt'), 'not a repository');
+    // Tenra was touched long ago; Warehouse just now.
+    const old = new Date(Date.now() - 3600_000);
+    for (const f of ['index', 'HEAD', 'logs/HEAD']) utimesSync(join(top, 'tenra', '.git', f), old, old);
+    quiet(await run(stop({ cwd: top }), {}, top));
+    expect(received[0]?.body).toMatchObject({ repo: 'dkicekeeper/Warehouse', branch: 'claude/new' });
+  });
+
   it('outside a git repository sends null for repository and branch', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wh-nogit-'));
     quiet(await run(stop({ cwd: dir }), {}, dir));
@@ -238,5 +262,42 @@ describe('warehouse-report hook', () => {
   it('never prints the token, even when asked to be verbose by a hostile environment', async () => {
     const r = await run(stop(), { WAREHOUSE_REPORT_TOKEN: 'tok_secret', WAREHOUSE_URL: 'http://127.0.0.1:9', CURL_VERBOSE: '1' });
     expect(r.stdout + r.stderr).not.toContain('tok_secret');
+  });
+
+  it('sends one report when the repository hook and the user hook both fire for the same turn', async () => {
+    const lockDir = mkdtempSync(join(tmpdir(), 'wh-lock-'));
+    await Promise.all([run(stop(), { TMPDIR: lockDir }), run(stop(), { TMPDIR: lockDir })]);
+    expect(received).toHaveLength(1);
+    // A different turn of the same session is reported again.
+    await run(stop({ last_assistant_message: 'Дальше.\n\nСтатус: готово — всё' }), { TMPDIR: lockDir });
+    expect(received).toHaveLength(2);
+  });
+});
+
+describe('warehouse-report --install', () => {
+  const install = (settings: string) =>
+    execFileSync('python3', [SCRIPT, '--install', settings], { encoding: 'utf8' });
+
+  it('adds both hooks to a user settings file, pointing at this very script', () => {
+    const settings = join(mkdtempSync(join(tmpdir(), 'wh-settings-')), 'settings.json');
+    install(settings);
+    const json = JSON.parse(readFileSync(settings, 'utf8'));
+    for (const event of ['Stop', 'UserPromptSubmit']) {
+      const commands = json.hooks[event].flatMap((g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command));
+      expect(commands).toEqual([`python3 "${SCRIPT}" >/dev/null 2>&1 || true`]);
+    }
+  });
+
+  it('keeps what the file already had and does not add itself twice', () => {
+    const settings = join(mkdtempSync(join(tmpdir(), 'wh-settings-')), 'settings.json');
+    const other = { hooks: [{ type: 'command', command: 'echo other' }] };
+    writeFileSync(settings, JSON.stringify({ model: 'x', hooks: { Stop: [other] } }));
+    install(settings);
+    install(settings);
+    const json = JSON.parse(readFileSync(settings, 'utf8'));
+    expect(json.model).toBe('x');
+    expect(json.hooks.Stop).toHaveLength(2);
+    expect(json.hooks.Stop[0]).toEqual(other);
+    expect(json.hooks.UserPromptSubmit).toHaveLength(1);
   });
 });
