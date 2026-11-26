@@ -57,7 +57,8 @@ pnpm build
 - Вся логика — чистые функции в `lib/domain/`, покрытые тестами; сначала падающий тест, потом код.
 - Интерфейс — на [shadcn/ui](https://ui.shadcn.com/) (`components.json`, стиль `base-nova`): компоненты
   добавляет её CLI (`pnpm dlx shadcn@latest add <имя>`) в `components/ui/`, руками их не пишут.
-  Страницы собираются из `components/page.tsx`; цвета только токенами темы (`bg-card`,
+  Страницы владельца лежат в `app/(app)/` внутри рамки `components/shell.tsx` и читают доску из одной
+  копии (`components/board-data.tsx`, опрос `/api/board`); собираются из `components/page.tsx`; цвета только токенами темы (`bg-card`,
   `text-muted-foreground`, `text-destructive`, свои `text-success` и `text-warning`), тёмная тема —
   по системной настройке.
 - Тексты интерфейса и сообщений — на русском, идентификаторы в коде — на английском.

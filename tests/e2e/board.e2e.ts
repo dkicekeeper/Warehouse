@@ -89,25 +89,53 @@ describe('a stranger', () => {
   });
 });
 
-describe('the owner’s board', () => {
+describe('the owner’s overview', () => {
   it.each([
     ['phone', 390, 844],
-    ['desktop', 1280, 800],
-  ])('shows the three blocks on a %s without sideways scrolling', async (name, width, height) => {
+    ['desktop', 1280, 900],
+  ])('shows the numbers, what waits, the builds and the queue on a %s without sideways scrolling', async (name, width, height) => {
     const { page } = await signedIn(BOARD, { width, height, scale: SHOTS ? 2 : 1 });
     await page.goto(BASE);
-    await page.getByRole('heading', { name: 'Ждёт вас (3)' }).waitFor();
+    await page.getByRole('heading', { name: /Ждёт вас/ }).waitFor();
     expect(await page.getByTestId('attention-row').count()).toBe(4);
     expect(await page.getByTestId('queue-row').count()).toBe(5);
-    expect(await page.getByTestId('project-row').count()).toBe(4);
+    expect(await page.getByTestId('kpi-waiting').innerText()).toContain('3 просьбы · 0 задач');
+    expect(await page.getByTestId('kpi-sessions').innerText()).toContain('молчат: 1');
+    expect(await page.getByTestId('kpi-queue').innerText()).toContain('свободное место через ~1 ч 2 мин');
     await expect(page.getByText('идёт 2 · ждёт 3 · свободное место через ~1 ч 2 мин').isVisible()).resolves.toBe(true);
     await expect(page.getByText('отложено: 1').isVisible()).resolves.toBe(true);
+    await page.getByTestId('mac-chart').locator('.recharts-bar-rectangle').first().waitFor();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    if (SHOTS) {
-      await page.locator('details').nth(1).locator('summary').click();
-      await page.screenshot({ path: `${SHOTS}/board-${name}-light.png`, fullPage: true });
-    }
+    // A sidebar on a wide screen, a tab bar at the bottom of a phone.
+    const sidebar = page.getByRole('navigation', { name: 'Проекты' });
+    expect(await sidebar.isVisible()).toBe(name === 'desktop');
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/overview-${name}-light.png`, fullPage: true });
+  });
+
+  it('the tabs narrow the list to sessions or to PRs', async () => {
+    const { page } = await signedIn(BOARD);
+    await page.goto(BASE);
+    await page.getByTestId('attention-row').first().waitFor();
+    await page.getByRole('tab', { name: /PR и CI/ }).click();
+    expect(await page.getByTestId('attention-row').count()).toBe(1);
+    await page.getByRole('tab', { name: /Сессии/ }).click();
+    expect(await page.getByTestId('attention-row').count()).toBe(3);
+  });
+
+  it('a row opens its details with what is known about the PR and the session', async () => {
+    const { page } = await signedIn(BOARD, { width: 1280, height: 900, scale: SHOTS ? 2 : 1 });
+    await page.goto(BASE);
+    await page.getByTestId('attention-row').first().getByRole('button').click();
+    const detail = page.getByTestId('detail');
+    await detail.waitFor();
+    const text = await detail.innerText();
+    expect(text).toContain('PR #3 Add an InfoTip to trophy rarity');
+    expect(text).toContain('зелёный');
+    expect(text).toContain('можно');
+    expect(text).toContain('смержить PR #3');
+    expect(await detail.getByRole('link', { name: 'Открыть PR' }).getAttribute('href')).toBe('https://github.com/dkicekeeper/Platina/pull/3');
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/overview-detail-desktop.png` });
   });
 
   it('says estimates with a tilde and the unknown with «~?»', async () => {
@@ -121,20 +149,22 @@ describe('the owner’s board', () => {
     expect(await rows.nth(3).innerText()).toContain('устарел');
   });
 
-  it('closing an item posts a dismiss for it', async () => {
+  it('closing an item from its details posts a dismiss for it', async () => {
     const { page, posts } = await signedIn(BOARD);
     await page.goto(BASE);
-    const row = page.getByTestId('attention-row').first();
-    await row.getByRole('button', { name: 'закрыть' }).click();
+    await page.getByTestId('attention-row').first().getByRole('button').click();
+    await page.getByTestId('detail').getByRole('button', { name: 'закрыть' }).click();
     await expect.poll(() => posts).toEqual([{ url: '/api/items/i1', body: '{"action":"dismiss"}' }]);
   });
 
   it('postponing offers «до завтра» and «на неделю»', async () => {
-    const { page, posts } = await signedIn(BOARD);
+    const { page, posts } = await signedIn(BOARD, { scale: SHOTS ? 2 : 1 });
     await page.goto(BASE);
-    const row = page.getByTestId('attention-row').nth(1);
-    await row.getByRole('button', { name: 'отложить' }).click();
-    await row.getByRole('button', { name: 'на неделю' }).click();
+    await page.getByTestId('attention-row').nth(1).getByRole('button').click();
+    const detail = page.getByTestId('detail');
+    await detail.getByRole('button', { name: 'до завтра' }).waitFor();
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/overview-detail-phone.png` });
+    await detail.getByRole('button', { name: 'на неделю' }).click();
     await expect.poll(() => posts).toEqual([{ url: '/api/items/i2', body: '{"action":"snooze","until":"week"}' }]);
   });
 
@@ -168,9 +198,10 @@ describe('the owner’s board', () => {
     await page.goto(BASE);
     await page.getByText('Ничего не ждёт вашего внимания.').waitFor();
     await expect(page.getByText('Очередь пуста.').isVisible()).resolves.toBe(true);
-    await expect(page.getByText('есть свободное место').isVisible()).resolves.toBe(true);
+    await expect(page.getByText('За две недели сборок macOS не было.').isVisible()).resolves.toBe(true);
+    await expect(page.getByText('есть свободное место').first().isVisible()).resolves.toBe(true);
     await expect(page.getByRole('status').filter({ hasText: 'GitHub не сверялся' }).isVisible()).resolves.toBe(true);
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/board-empty-dark.png`, fullPage: true });
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/overview-empty-dark.png`, fullPage: true });
   });
 
   it('keeps the last data on screen and says «нет связи» when the server stops answering', async () => {
@@ -180,7 +211,7 @@ describe('the owner’s board', () => {
     await page.unroute('**/api/board');
     await page.route('**/api/board', (route) => route.abort());
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-    await page.getByText('нет связи').waitFor();
+    await page.locator('[data-testid=freshness]:visible').getByText('нет связи').waitFor();
     expect(await page.getByTestId('attention-row').count()).toBe(4);
   });
 
@@ -197,6 +228,13 @@ describe('the owner’s board', () => {
       return Array.from(ctx.getImageData(0, 0, 1, 1).data.slice(0, 3));
     });
     expect(Math.max(r!, g!, b!)).toBeLessThan(40);
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/board-phone-dark.png`, fullPage: true });
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/overview-phone-dark.png`, fullPage: true });
+  });
+
+  it('dark theme on a desktop', async () => {
+    const { page } = await signedIn(BOARD, { dark: true, width: 1280, height: 900, scale: SHOTS ? 2 : 1 });
+    await page.goto(BASE);
+    await page.getByTestId('mac-chart').locator('.recharts-bar-rectangle').first().waitFor();
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/overview-desktop-dark.png`, fullPage: true });
   });
 });

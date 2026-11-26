@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /** The pieces every page of the service is built from, on shadcn/ui. */
 
-export function Page({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
+/** A page inside the shell: its title, what it says about itself on the right, its blocks. */
+export function Page({ title, aside, wide, children }: { title: string; aside?: React.ReactNode; wide?: boolean; children: React.ReactNode }) {
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pb-16 pt-5">
+    <div className={`mx-auto flex w-full flex-col gap-6 px-4 pb-10 pt-5 lg:px-8 lg:pt-8 ${wide ? 'max-w-6xl' : 'max-w-3xl'}`}>
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         {aside && <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-muted-foreground">{aside}</div>}
