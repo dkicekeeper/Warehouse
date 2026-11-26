@@ -25,9 +25,20 @@ export function runLint(root: string, args: string[] = []): { code: number; out:
   return run('lint.py', ['--root', root, ...args]);
 }
 
-export function lintJson(root: string): { code: number; data: any } {
+/** What `lint.py --json` prints; the records carry their header fields as they are. */
+export interface LintRecord { id: string; path: string; archived: boolean; title: string | null; [field: string]: unknown }
+export interface LintTree {
+  standard: number;
+  project: { title: string | null; links: Record<string, unknown>; [field: string]: unknown };
+  backlog: LintRecord[];
+  plans: LintRecord[];
+  decisions: LintRecord[];
+  violations: { path: string; code: string; message: string }[];
+}
+
+export function lintJson(root: string): { code: number; data: LintTree } {
   const r = spawnSync('python3', ['-I', join(STANDARD, 'lint.py'), '--root', root, '--json'], { encoding: 'utf8' });
-  return { code: r.status ?? -1, data: JSON.parse(r.stdout) };
+  return { code: r.status ?? -1, data: JSON.parse(r.stdout) as LintTree };
 }
 
 export function runSync(claudeMd: string, args: string[] = []): { code: number; out: string } {

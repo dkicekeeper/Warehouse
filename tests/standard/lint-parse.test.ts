@@ -25,7 +25,7 @@ describe('lint.py: reading a tree', () => {
     const done = TASK.replace('status: ready', 'status: done');
     const root = makeTree({ ...VALID, 'docs/archive/backlog/2026-11-01-old.md': done });
     const { data } = lintJson(root);
-    expect(data.backlog.find((t: any) => t.id === '2026-11-01-old').archived).toBe(true);
+    expect(data.backlog.find((t) => t.id === '2026-11-01-old')?.archived).toBe(true);
   });
 
   it('reads a header with a BOM and CRLF line ends', () => {
@@ -41,7 +41,7 @@ describe('lint.py: reading a tree', () => {
     const root = makeTree({ ...VALID, 'docs/backlog/2026-11-26-attachments.md': task, 'docs/plans/2026-11-20-notifications.md': plan });
     const { data } = lintJson(root);
     expect(data.backlog[0]).toMatchObject({ status: 'blocked', 'needs-owner': 'выбрать цену: 5 или 7', pr: 142 });
-    expect(data.plans[0].tasks).toEqual([]);
+    expect(data.plans[0]?.tasks).toEqual([]);
   });
 
   it('reports a header that is never closed', () => {
