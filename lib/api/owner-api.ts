@@ -1,3 +1,4 @@
+import { macHistory } from '@/lib/domain/mac-history';
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
 import { buildBacklogView, summarizeBacklog } from '@/lib/domain/backlog';
@@ -63,7 +64,8 @@ export async function handleBoard(deps: OwnerDeps): Promise<Response> {
   // Right after a deploy the table may not exist yet (the tick creates it): the board must still open.
   const docs = await store.listDocs().catch(() => []);
   const backlog = summarizeBacklog(buildBacklogView(snap.projects, snap.repos, docs, now));
-  return json({ ...buildBoardView(snap, items, queue, sources, now, settings), backlog });
+  const macBuilds = macHistory(history, snap.repos, snap.projects, now, settings.timezone);
+  return json({ ...buildBoardView(snap, items, queue, sources, now, settings), backlog, macBuilds });
 }
 
 /** Tasks, plans and decisions of every project, as their repositories hold them. */

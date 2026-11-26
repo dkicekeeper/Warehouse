@@ -128,17 +128,29 @@ describe('the backlog page', () => {
   });
 });
 
-describe('the board with backlog data', () => {
+describe('the overview and projects with backlog data', () => {
   it('shows the tasks that wait for the owner as their own block and links each project to its tasks', async () => {
     const page = await signedIn({ scale: SHOTS ? 2 : 1 });
     await page.goto(BASE);
-    await page.getByRole('heading', { name: 'Задачи ждут вас' }).waitFor();
+    await page.getByTestId('owner-task').first().waitFor();
     expect(await page.getByTestId('owner-task').count()).toBe(2);
     expect(await page.getByTestId('attention-row').count()).toBe(4);
-    const docs = page.getByTestId('project-docs').first();
-    expect(await docs.textContent()).toContain('бета');
-    expect(await docs.getByRole('link').getAttribute('href')).toBe('/backlog?project=p-platina');
+    await page.getByRole('tab', { name: /Задачи/ }).click();
+    expect(await page.getByTestId('attention-row').count()).toBe(0);
+    expect(await page.getByTestId('owner-task').count()).toBe(2);
     expect(await noSidewaysScroll(page)).toBe(true);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/board-with-backlog.png`, fullPage: true });
+  });
+
+  it('the projects page shows each project with its stage and its tasks', async () => {
+    const page = await signedIn({ width: 1280, height: 900, scale: SHOTS ? 2 : 1 });
+    await page.goto(`${BASE}/projects`);
+    const card = page.getByTestId('project-row').first();
+    await card.waitFor();
+    expect(await card.textContent()).toContain('бета');
+    const docs = card.getByTestId('project-docs');
+    expect(await docs.getByRole('link').getAttribute('href')).toBe('/backlog?project=p-platina');
+    expect(await noSidewaysScroll(page)).toBe(true);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/projects-desktop.png`, fullPage: true });
   });
 });

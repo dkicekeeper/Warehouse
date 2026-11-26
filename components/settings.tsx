@@ -1,10 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { duration } from './format';
-import { Notice, Page, link } from './page';
+import { Notice, Page } from './page';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
@@ -76,14 +75,7 @@ export function Settings() {
   );
 
   return (
-    <Page
-      title="Настройки"
-      aside={
-        <Link href="/" className={link}>
-          ← к панели
-        </Link>
-      }
-    >
+    <Page title="Настройки">
       {message && (
         <Notice tone="info">{message}</Notice>
       )}

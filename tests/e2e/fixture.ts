@@ -1,9 +1,9 @@
-import type { BoardView } from '@/lib/domain/board';
+import type { BoardResponse } from '@/lib/domain/overview';
 
 const session = (id: string) => `https://claude.ai/code/session_${id}`;
 
 /** A busy afternoon: what the owner's board looked like on the day the service was designed. */
-export const BOARD: BoardView = {
+export const BOARD: BoardResponse = {
   generatedAt: new Date().toISOString(),
   snoozed: 1,
   warnings: [],
@@ -54,7 +54,18 @@ export const BOARD: BoardView = {
   ],
 };
 
-export const EMPTY_BOARD: BoardView = {
+/** Two weeks of macOS builds: Tenra and Dalada most days, Platina now and then. */
+BOARD.macBuilds = {
+  projects: ['Tenra', 'Dalada', 'Platina', 'DesignKit'],
+  days: Array.from({ length: 14 }, (_, i) => ({
+    date: `2026-11-${String(13 + i).padStart(2, '0')}`,
+    label: `${String(13 + i).padStart(2, '0')}.11`,
+    minutes: { Tenra: 40 + ((i * 37) % 90), Dalada: i % 3 === 0 ? 0 : 25 + ((i * 13) % 40), Platina: i % 4 === 1 ? 35 : 0, DesignKit: i % 5 === 2 ? 20 : 0 },
+    waitMin: (i * 17) % 60,
+  })),
+};
+
+export const EMPTY_BOARD: BoardResponse = {
   generatedAt: new Date().toISOString(),
   snoozed: 0,
   warnings: ['GitHub не сверялся больше часа — данные о PR и сборках могут быть устаревшими'],

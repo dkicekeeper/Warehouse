@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BacklogView, DecisionRow, PlanRow, ProjectBacklog, TaskRow } from '@/lib/domain/backlog';
@@ -96,9 +95,6 @@ export function Backlog() {
       aside={
         <>
           <span className={offline ? 'text-destructive' : undefined}>{offline ? 'нет связи' : view ? read : 'загрузка…'}</span>
-          <Link href="/" className={link}>
-            Диспетчерская
-          </Link>
         </>
       }
     >

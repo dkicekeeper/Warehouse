@@ -1,5 +1,6 @@
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
+import { EMPTY_BOARD } from './fixture';
 import { BASE } from './setup';
 
 const VIEW = {
@@ -30,6 +31,8 @@ async function open() {
   await context.setExtraHTTPHeaders({ cookie: '__Host-wh_session=x' });
   const page = await context.newPage();
   const posts: unknown[] = [];
+  // The frame around every page counts from the board.
+  await page.route('**/api/board', (route) => route.fulfill({ json: EMPTY_BOARD }));
   await page.route('**/api/settings', (route) => {
     if (route.request().method() === 'GET') return route.fulfill({ json: VIEW });
     posts.push(JSON.parse(route.request().postData() ?? 'null'));

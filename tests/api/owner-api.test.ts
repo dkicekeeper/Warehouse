@@ -103,6 +103,10 @@ describe('GET /api/board', () => {
     expect(board.queue).toMatchObject({ running: 1, waiting: 0, rows: [{ project: 'Tenra', elapsedMin: 18, estimateMin: 40 }] });
     expect(board.projects.map((p: { name: string }) => p.name)).toEqual(['Tenra']);
     expect(board.projects[0].sessions).toMatchObject([{ id: 'session_a', state: 'needs_owner' }]);
+    // The finished build of the last 14 days counts on its day, under its project.
+    expect(board.macBuilds.days).toHaveLength(14);
+    expect(board.macBuilds.projects).toEqual(['Tenra']);
+    expect(board.macBuilds.days.at(-1).minutes).toEqual({ Tenra: 40 });
   });
 });
 
