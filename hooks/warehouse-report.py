@@ -10,7 +10,7 @@ It must never get in the session's way: it prints nothing, always exits 0, and g
 five seconds whatever happens.
 
 Configuration (environment):
-  WAREHOUSE_URL           base URL of the service; defaults to DEFAULT_URL below
+  WAREHOUSE_URL           base URL of the service; defaults to DEFAULT_URL below, empty = off
   WAREHOUSE_REPORT_TOKEN  bearer token; in cloud sessions leave it unset — the environment's
                           network proxy puts the real token into the request
 """
@@ -21,8 +21,8 @@ import signal
 import subprocess
 import sys
 
-# Set at deployment (ops/setup.md). Empty: the hook stays silent and sends nothing anywhere.
-DEFAULT_URL = ""
+# The deployed service. Empty would make the hook stay silent and send nothing anywhere.
+DEFAULT_URL = "https://warehouse-henna-pi.vercel.app"
 TAIL_CHARS = 2000
 TRANSCRIPT_BYTES = 400_000
 
@@ -73,7 +73,8 @@ def last_message_from_transcript(path):
 
 
 def main():
-    base = (os.environ.get("WAREHOUSE_URL") or DEFAULT_URL).rstrip("/")
+    # An explicitly empty WAREHOUSE_URL switches the hook off (tests, or a machine that should stay quiet).
+    base = os.environ.get("WAREHOUSE_URL", DEFAULT_URL).rstrip("/")
     if not base.startswith(("https://", "http://127.0.0.1", "http://localhost")):
         return  # not configured, or not a transport that keeps the message private
     event = json.loads(sys.stdin.read())
