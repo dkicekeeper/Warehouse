@@ -97,7 +97,7 @@ function ProjectCardView({ card: c, project }: { card: ProjectCard; project: Pro
             <TaskBar segments={c.segments} total={c.openTasks} />
           </div>
         ) : (
-          c.id && <p className="text-xs text-muted-foreground">Документы проекта ещё не прочитаны.</p>
+          c.id && <p className="text-xs text-muted-foreground">Документов по стандарту нет.</p>
         )}
         <dl className="grid grid-cols-3 gap-2 border-t pt-3 text-xs">
           <div>

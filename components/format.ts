@@ -10,6 +10,13 @@ export function duration(minutes: number): string {
   return `${Math.floor(minutes / 1440)} дн`;
 }
 
+/** A task's age: it knows only the day, so «сегодня», «вчера», «N дн». */
+export const days = (n: number): string => (n === 0 ? 'сегодня' : n === 1 ? 'вчера' : `${n} дн`);
+
+/** Markdown of a task's text shown as plain text: a link keeps its words, emphasis loses its marks. */
+export const plainText = (md: string): string =>
+  md.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|__)(.+?)\1/g, '$2');
+
 /** Every estimate carries a tilde; the unknown is said out loud, never guessed. */
 export function approx(minutes: number | null): string {
   if (minutes === null) return '~?';

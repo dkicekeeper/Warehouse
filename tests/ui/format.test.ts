@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approx, duration, plural, secondsAgo } from '@/components/format';
+import { approx, days, duration, plainText, plural, secondsAgo } from '@/components/format';
 
 describe('duration', () => {
   it.each([
@@ -62,5 +62,17 @@ describe('backlog labels', () => {
     expect(['idea', 'development', 'beta', 'live', 'maintenance', null, 'x'].map(stageLabel)).toEqual(['идея', 'разработка', 'бета', 'выпущен', 'поддержка', '', 'x']);
     expect(['draft', 'approved', 'in-progress', null].map(planLabel)).toEqual(['черновик', 'одобрен', 'в работе', 'без статуса']);
     expect(['feature', 'bug', 'chore', 'research', 'content', 'growth', null].map(typeLabel)).toEqual(['возможность', 'ошибка', 'рутина', 'исследование', 'контент', 'рост', '']);
+  });
+});
+
+describe('days', () => {
+  it('says today and yesterday in words, then counts', () => {
+    expect([0, 1, 2, 12].map(days)).toEqual(['сегодня', 'вчера', '2 дн', '12 дн']);
+  });
+});
+
+describe('plainText', () => {
+  it('keeps the words of a Markdown link and drops its address and the bold marks', () => {
+    expect(plainText('из [04-infra](../architecture-infra.md#x) **Бэкапы**')).toBe('из 04-infra Бэкапы');
   });
 });
