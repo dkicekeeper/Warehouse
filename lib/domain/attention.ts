@@ -4,6 +4,7 @@ export type ItemKind =
   | 'session_needs_owner'
   | 'session_unknown'
   | 'session_silent'
+  | 'session_stale'
   | 'session_reconcile'
   | 'pr_ready'
   | 'ci_failed'
@@ -31,6 +32,23 @@ const MINUTE = 60_000;
  * the hook report: both are written at the end of the same turn, seconds apart.
  */
 const RECONCILE_GRACE_MIN = 2;
+
+/**
+ * A session's push and its report end the same turn, so a build may start a few minutes after the
+ * report. Builds later than this on the session's branch mean it went on working after it asked.
+ */
+const STALE_GRACE_MIN = 10;
+
+/** The first build the session's own pushes started after it reported, past the grace; null if none. */
+function workedSince(s: Session, runs: Run[]): Date | null {
+  if (!s.reportedAt || s.repo === null || s.branch === null) return null;
+  const after = s.reportedAt.getTime() + STALE_GRACE_MIN * MINUTE;
+  const later = runs
+    .filter((r) => r.repo === s.repo && r.branch === s.branch && (r.event === 'push' || r.event === 'pull_request'))
+    .map((r) => r.createdAt.getTime())
+    .filter((t) => t > after);
+  return later.length > 0 ? new Date(Math.min(...later)) : null;
+}
 
 /**
  * "работаю" does not last forever: a session that said it was waiting and never came back is the
@@ -97,6 +115,11 @@ function sessionItem(
 
   if (!s.archived && reported) {
     if (s.state === 'needs_owner') {
+      // The session pushed after asking: it moved on, and its report is old (the hook went quiet).
+      const since = workedSince(s, runs);
+      if (since) {
+        return { ...base, kind: 'session_stale', level: 'note', text: `отчёт устарел: «${s.stateText}», а сессия пушила позже`, since };
+      }
       return { ...base, kind: 'session_needs_owner', level: 'request', text: s.stateText, since: reported };
     }
     if (s.state === 'working' && !isWorking(s, runs, now, cfg)) {

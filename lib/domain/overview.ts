@@ -34,6 +34,7 @@ export const KIND_LABEL: Record<ItemKind, string> = {
   session_needs_owner: 'просьба сессии',
   session_unknown: 'без статуса',
   session_silent: 'сессия молчит',
+  session_stale: 'отчёт устарел',
   session_reconcile: 'заметка',
   pr_ready: 'PR готов',
   ci_failed: 'CI упал',
