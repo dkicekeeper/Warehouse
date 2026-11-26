@@ -294,10 +294,124 @@ def check_structure(root, tree, ignore):
     return found
 
 
+VALUES = {
+    "backlog": {"status": ["idea", "ready", "in-progress", "blocked", "done", "dropped"],
+                "type": ["feature", "bug", "chore", "research", "content", "growth"],
+                "priority": [1, 2, 3], "size": ["s", "m", "l"]},
+    "plans": {"status": ["draft", "approved", "in-progress", "done", "dropped"], "kind": ["design", "plan"]},
+    "decisions": {"status": ["active", "superseded"], "by": ["owner", "claude"]},
+}
+REQUIRED = {"backlog": ["status", "type", "created", "updated"],
+            "plans": ["status", "kind", "created", "updated"],
+            "decisions": ["status", "decided", "by"]}
+DATES = {"backlog": ["created", "updated"], "plans": ["created", "updated", "approved"], "decisions": ["decided"]}
+CLOSED = {"backlog": ["done", "dropped"], "plans": ["done", "dropped"], "decisions": ["superseded"]}
+WORKABLE = ["ready", "in-progress", "blocked"]  # статусы, с которых действует «готово к работе»
+WHY = ["Зачем", "Why"]
+DONE_WHEN = ["Готово, когда", "Done when"]
+WAITING = ["Ждёт", "Waiting"]
+DATED = re.compile(r"^\d{4}-\d{2}-\d{2}-.+")
+
+
+def is_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    year, month, day = (int(part) for part in value.split("-"))
+    if not 1 <= month <= 12 or day < 1:
+        return False
+    leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    return day <= [31, 29 if leap else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+
+
+def has_section(body, names):
+    """Строка «Название: …» или заголовок «## Название»."""
+    for line in body.split("\n"):
+        text = line.strip().lstrip("#").strip().lower()
+        if any(text == name.lower() or text.startswith(name.lower() + ":") for name in names):
+            return True
+    return False
+
+
+def check_records(root, tree, ignore):
+    found = []
+    ids = {folder: {record["id"] for record in tree[folder]} for folder in KINDS}
+    for folder in KINDS:
+        for record in tree[folder]:
+            path, fields = record["path"], record["fields"]
+            if ignored(path, ignore):
+                continue
+
+            def bad(code, message):
+                found.append((path, code, message))
+
+            if fields is None:
+                if not record["archived"]:
+                    bad("header", "нет шапки с полями. Нужны: %s; образец в блоке стандарта в CLAUDE.md"
+                        % one_of(REQUIRED[folder]))
+                continue  # архив без шапки — история, не проверяется
+            if record["errors"]:
+                continue  # шапку не разобрать: об этом уже сказано
+            if not DATED.match(record["id"]):
+                bad("name", "имя без даты. Нужно <ГГГГ-ММ-ДД>-<слово>.md")
+            for key in fields:
+                if key not in FIELDS[folder]:
+                    bad("header", "неизвестное поле «%s». Допустимы: %s" % (key, one_of(FIELDS[folder])))
+            for key, allowed in VALUES[folder].items():
+                if key in fields and (isinstance(fields[key], bool) or fields[key] not in allowed):
+                    bad("header", "%s: «%s». Допустимо: %s" % (key, fields[key], one_of(allowed)))
+            for key in DATES[folder]:
+                if key in fields and not is_date(fields[key]):
+                    bad("header", "%s: «%s». Нужна дата ГГГГ-ММ-ДД" % (key, fields[key]))
+            status = fields.get("status")
+            required = list(REQUIRED[folder])
+            if folder == "backlog" and status not in (None, "idea", "dropped"):
+                required += ["priority", "size"]
+            if folder == "plans" and status in ("approved", "in-progress", "done"):
+                required += ["approved"]
+            for key in required:
+                if key not in fields:
+                    bad("header", "нет поля «%s». Для статуса «%s» нужны: %s" % (key, status, one_of(required)))
+
+            closed = status in CLOSED[folder]
+            if status in VALUES[folder]["status"] and closed != record["archived"]:
+                home = "docs/archive/%s/" % folder if closed else "docs/%s/" % folder
+                bad("place", "статус «%s» живёт в %s. Перенесите файл (git mv) или исправьте статус" % (status, home))
+
+            if folder == "backlog" and not record["archived"] and status in WORKABLE:
+                body = record["body"]
+                if title_of(body) is None:
+                    bad("dor", "нет заголовка «# Название задачи»")
+                if not has_section(body, WHY):
+                    bad("dor", "нет раздела «Зачем» (Why). Без него задача остаётся в статусе idea")
+                if not has_section(body, DONE_WHEN):
+                    bad("dor", "нет раздела «Готово, когда» (Done when). Без него задача остаётся в статусе idea")
+                if status == "ready" and "needs-owner" in fields:
+                    bad("dor", "у задачи ready открыт вопрос к владельцу (needs-owner). Статус такой задачи — blocked")
+                if status == "blocked" and "needs-owner" not in fields and not has_section(body, WAITING):
+                    bad("dor", "у задачи blocked нет причины. Поле needs-owner или строка «Ждёт: …»")
+                if status == "in-progress" and fields.get("size") == "l" and "plan" not in fields:
+                    bad("dor", "большая задача (size: l) в работе без плана. Поле plan: plans/<файл>.md")
+
+            plan = fields.get("plan") if folder == "backlog" else None
+            if plan is not None and not os.path.isfile(os.path.join(root, "docs", str(plan))):
+                bad("ref", "plan: файла docs/%s нет. Путь пишется от docs/" % plan)
+            if folder == "plans" and isinstance(fields.get("tasks"), list):
+                for task in fields["tasks"]:
+                    if task not in ids["backlog"]:
+                        bad("ref", "tasks: задачи «%s» нет ни в docs/backlog/, ни в архиве" % task)
+            elif folder == "plans" and "tasks" in fields:
+                bad("header", "tasks: нужен список в скобках, например [2026-11-26-слово] или []")
+            supersedes = fields.get("supersedes") if folder == "decisions" else None
+            if supersedes is not None and supersedes not in ids["decisions"]:
+                bad("ref", "supersedes: решения «%s» нет ни в docs/decisions/, ни в архиве" % supersedes)
+    return found
+
+
 def run_checks(root, tree):
     ignore, found = load_ignore(root)
     found += check_headers(tree)
     found += check_structure(root, tree, ignore)
+    found += check_records(root, tree, ignore)
     return found
 
 
