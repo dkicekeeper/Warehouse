@@ -193,11 +193,15 @@ describe('source warnings', () => {
     expect(view({}, [], sources).warnings).toEqual(['Хук сессий: сессий обновилось без отчёта хука: 2']);
   });
 
-  it('treats a source that never reported as late, except the session hook', () => {
+  it('treats GitHub that never synced as late', () => {
     expect(view({}, [], []).warnings).toEqual([
       'GitHub не сверялся больше часа — данные о PR и сборках могут быть устаревшими',
-      'Сверка сессий не приходила больше двух часов',
     ]);
+  });
+
+  it('says nothing about the session reconcile where it has never run: it is optional', () => {
+    const sources = healthy.filter((s) => s.source !== 'reconcile');
+    expect(view({}, [], sources).warnings).toEqual([]);
   });
 });
 
