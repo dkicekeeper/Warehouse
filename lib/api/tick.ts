@@ -97,8 +97,17 @@ async function runTick(deps: Omit<TickDeps, 'token'>): Promise<Response> {
     }
   }
 
+  let status = 200;
+  try {
+    out.recompute = await deps.recompute();
+  } catch (err) {
+    out.recompute = message(err);
+    status = 500;
+  }
+
   // What the repositories say about themselves (the project standard): the marked ones every
-  // tick, all of them every half an hour, which also repairs a push whose webhook never came.
+  // tick, all of them every half an hour, which also repairs a push whose webhook never came. Last,
+  // because the first read of many repositories is long and nothing above may wait for it.
   if (deps.github) {
     try {
       const last = (await store.getSources()).find((s) => s.source === 'docs_sync');
@@ -113,14 +122,6 @@ async function runTick(deps: Omit<TickDeps, 'token'>): Promise<Response> {
       out.docs = message(err);
       await store.touchSource('docs_sync', now, false, out.docs).catch(() => {});
     }
-  }
-
-  let status = 200;
-  try {
-    out.recompute = await deps.recompute();
-  } catch (err) {
-    out.recompute = message(err);
-    status = 500;
   }
   return Response.json(out, { status });
 }

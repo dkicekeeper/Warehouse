@@ -134,7 +134,10 @@ export function buildBacklogView(projects: Project[], repos: Repo[], docs: Proje
     if (doc.kind === 'project') {
       const links: Record<string, string | boolean> = {};
       if (f.links && typeof f.links === 'object' && !Array.isArray(f.links)) {
-        for (const [k, v] of Object.entries(f.links)) if (typeof v === 'string' || typeof v === 'boolean') links[k] = v;
+        // The file is the repository's own, but an address goes into a link: only the web ones.
+        for (const [k, v] of Object.entries(f.links)) {
+          if (typeof v === 'boolean' || (typeof v === 'string' && /^https?:\/\//i.test(v))) links[k] = v;
+        }
       }
       p.passport = {
         title: doc.title,

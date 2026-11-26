@@ -263,3 +263,15 @@ describe('tick: project documents', () => {
     expect((await store.getSources()).find((s) => s.source === 'docs_sync')?.note).toContain('404');
   });
 });
+
+describe('tick: project documents come last', () => {
+  it('recomputes before reading the docs, so a slow read never delays notifications', async () => {
+    await store.ensureRepo('o/r', 'main', 'R');
+    const order: string[] = [];
+    await tick({
+      github: { ...github, syncDocs: async () => (order.push('docs'), { read: 1, changed: 0 }) },
+      recompute: async () => (order.push('recompute'), { sent: 0, edited: 0, failed: 0 }),
+    });
+    expect(order).toEqual(['recompute', 'docs']);
+  });
+});

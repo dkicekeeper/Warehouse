@@ -80,8 +80,8 @@ export interface Store {
   listRepoDocs(repo: string): Promise<ProjectDoc[]>;
   /** The whole set a repository holds now: what is not in it is gone. Clears the "read again" mark. */
   replaceRepoDocs(repo: string, docs: ProjectDoc[], treeSha: string, now: Date): Promise<void>;
-  /** Asks for the repository's docs to be read at the next tick. */
-  markDocsDirty(repo: string): Promise<void>;
+  /** Asks for the repository's docs to be read at the next tick; `false` takes the request back. */
+  markDocsDirty(repo: string, dirty?: boolean): Promise<void>;
   listDocsState(): Promise<DocsState[]>;
 
   touchSource(source: SourceName, at: Date, ok: boolean, note?: string | null): Promise<void>;

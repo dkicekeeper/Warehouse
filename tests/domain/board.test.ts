@@ -210,3 +210,17 @@ it('carries the queue through and stamps the time', () => {
   expect(v.queue).toEqual({ ...EMPTY_QUEUE, rows: [] });
   expect(v.generatedAt).toBe(NOW.toISOString());
 });
+
+describe('warnings: project documents', () => {
+  it('says when the docs could not be read, until a read succeeds', async () => {
+    const { buildBoardView } = await import('@/lib/domain/board');
+    const { DEFAULT_SETTINGS } = await import('@/lib/domain/types');
+    const snap = { projects: [], repos: [], sessions: [], prs: [], runs: [], jobs: [] };
+    const queue = { running: 0, waiting: 0, freeSlotInMin: 0, rows: [] };
+    const fresh = { source: 'github_resync', lastOkAt: NOW, lastErrorAt: null, note: null };
+    const failing = { source: 'docs_sync', lastOkAt: minutesAgo(40), lastErrorAt: minutesAgo(5), note: 'o/r: GitHub 409' };
+    expect(buildBoardView(snap, [], queue, [fresh, failing], NOW, DEFAULT_SETTINGS).warnings).toEqual(['Документы проектов не прочитаны: o/r: GitHub 409']);
+    const healed = { ...failing, lastOkAt: NOW };
+    expect(buildBoardView(snap, [], queue, [fresh, healed], NOW, DEFAULT_SETTINGS).warnings).toEqual([]);
+  });
+});

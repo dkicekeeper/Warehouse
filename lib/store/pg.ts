@@ -547,8 +547,8 @@ export class PgStore implements Store {
     );
   }
 
-  async markDocsDirty(repo: string): Promise<void> {
-    await this.sql.query('update repos set docs_dirty = true where full_name = $1', [repo]);
+  async markDocsDirty(repo: string, dirty = true): Promise<void> {
+    await this.sql.query('update repos set docs_dirty = $2 where full_name = $1', [repo, dirty]);
   }
 
   async listDocsState(): Promise<DocsState[]> {

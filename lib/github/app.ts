@@ -194,7 +194,9 @@ export function createGithubApp(config: {
     }
     const docs: ProjectDoc[] = [];
     if (docsSha !== NO_DOCS) {
-      const tree = await call<{ tree: TreeEntry[] }>('GET', `/repos/${repo}/git/trees/${docsSha}?recursive=1`, token);
+      const tree = await call<{ tree: TreeEntry[]; truncated?: boolean }>('GET', `/repos/${repo}/git/trees/${docsSha}?recursive=1`, token);
+      // A cut-short listing would read as "the rest was deleted".
+      if (tree.truncated) throw new Error('GitHub отдал дерево docs не целиком');
       const have = new Map(before.map((d) => [d.path, d]));
       for (const entry of tree.tree) {
         const path = `docs/${entry.path}`;
@@ -229,6 +231,8 @@ export function createGithubApp(config: {
           if (await syncRepoDocs(store, state.repo, state.defaultBranch, state.treeSha, token, now)) changed++;
         } catch (err) {
           failures.push(`${state.repo}: ${err instanceof Error ? err.message : String(err)}`);
+          // Not again in a minute: the next full read tries it, and the board says why meanwhile.
+          await store.markDocsDirty(state.repo, false).catch(() => {});
         }
       }
       if (failures.length > 0) throw new Error(failures.join('; '));

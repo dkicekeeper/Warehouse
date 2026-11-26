@@ -100,3 +100,10 @@ describe('summarizeBacklog', () => {
     expect(s.byProject).toEqual({ p1: { stage: 'beta', open: 1, needsOwner: 1, inProgress: 0, ready: 0, ideas: 0 } });
   });
 });
+
+describe('passport links', () => {
+  it('keeps only web addresses and flags', () => {
+    const doc: ProjectDoc = { ...passport, fields: { ...passport.fields, links: { site: 'https://x', store: 'javascript:alert(1)', docs: 'http://y', testflight: true, odd: 'ftp://z' } } };
+    expect(buildBacklogView(projects, repos, [doc], NOW).projects[0]!.passport!.links).toEqual({ site: 'https://x', docs: 'http://y', testflight: true });
+  });
+});

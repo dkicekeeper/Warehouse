@@ -60,7 +60,9 @@ export async function handleBoard(deps: OwnerDeps): Promise<Response> {
     store.getSettings(),
   ]);
   const queue = estimateQueue({ runs: snap.runs, jobs: snap.jobs, history, sessions: snap.sessions }, now, settings);
-  const backlog = summarizeBacklog(buildBacklogView(snap.projects, snap.repos, await store.listDocs(), now));
+  // Right after a deploy the table may not exist yet (the tick creates it): the board must still open.
+  const docs = await store.listDocs().catch(() => []);
+  const backlog = summarizeBacklog(buildBacklogView(snap.projects, snap.repos, docs, now));
   return json({ ...buildBoardView(snap, items, queue, sources, now, settings), backlog });
 }
 
@@ -68,7 +70,11 @@ export async function handleBoard(deps: OwnerDeps): Promise<Response> {
 export async function handleBacklog(deps: OwnerDeps): Promise<Response> {
   if (!(await deps.isOwner())) return empty(401);
   const { store, now } = deps;
-  const [snap, docs, state] = await Promise.all([store.loadSnapshot(now), store.listDocs(), store.listDocsState()]);
+  const [snap, docs, state] = await Promise.all([
+    store.loadSnapshot(now),
+    store.listDocs().catch(() => []),
+    store.listDocsState().catch(() => []),
+  ]);
   const read = state.map((s) => s.syncedAt?.getTime() ?? 0).filter((t) => t > 0);
   return json({
     ...buildBacklogView(snap.projects, snap.repos, docs, now),

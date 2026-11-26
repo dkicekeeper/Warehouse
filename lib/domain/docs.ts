@@ -109,10 +109,13 @@ function splitTitle(body: string): { title: string | null; rest: string } {
   return { title: null, rest: body };
 }
 
-export function parseDoc(repo: string, path: string, blobSha: string, text: string): ProjectDoc | null {
+/** What Postgres cannot keep in text or JSON: NUL, and half of a character that needs two units. */
+const UNSTORABLE = /\u0000|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+export function parseDoc(repo: string, path: string, blobSha: string, raw: string): ProjectDoc | null {
   const kind = docKindOf(path);
   if (!kind) return null;
-  const { fields, body } = parseHeader(text);
+  const { fields, body } = parseHeader(raw.replace(UNSTORABLE, ''));
   const { title, rest } = splitTitle(body);
   const trimmed = rest.trim();
   const statusKey = kind === 'project' ? 'stage' : 'status';
@@ -125,7 +128,7 @@ export function parseDoc(repo: string, path: string, blobSha: string, text: stri
     title,
     status: typeof status === 'string' ? status : null,
     fields: fields ?? {},
-    body: trimmed.length > BODY_LIMIT ? `${trimmed.slice(0, BODY_LIMIT)}…` : trimmed,
+    body: trimmed.length > BODY_LIMIT ? `${Array.from(trimmed).slice(0, BODY_LIMIT).join('')}…` : trimmed,
     blobSha,
   };
 }

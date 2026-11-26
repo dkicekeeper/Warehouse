@@ -126,6 +126,27 @@ describe('syncDocs', () => {
     repoWith('d1', [{ path: 'project.md', sha: 'p1', text: PASSPORT }]);
     await expect(app().syncDocs(store, NOW)).rejects.toThrow(/Tenra/);
     expect(await store.listRepoDocs(REPO)).toHaveLength(1);
-    expect((await store.listDocsState()).find((s) => s.repo === 'dkicekeeper/Tenra')?.dirty).toBe(true);
+    expect((await store.listDocsState()).find((s) => s.repo === 'dkicekeeper/Tenra')?.dirty).toBe(false);
+  });
+});
+
+describe('syncDocs: a repository that cannot be read', () => {
+  it('is left for the next full read, not asked again every minute', async () => {
+    await expect(app().syncDocs(store, NOW)).rejects.toThrow(/Platina/);
+    expect((await store.listDocsState())[0]).toMatchObject({ dirty: false });
+    calls = [];
+    expect(await app().syncDocs(store, NOW)).toEqual({ read: 0, changed: 0 });
+    expect(calls.filter((c) => c.includes('/git/'))).toEqual([]);
+    await expect(app().syncDocs(store, NOW, { all: true })).rejects.toThrow(/Platina/);
+  });
+
+  it('refuses a docs tree GitHub cut short instead of dropping the files it did not list', async () => {
+    repoWith('d1', [{ path: 'project.md', sha: 'p1', text: PASSPORT }]);
+    await app().syncDocs(store, NOW);
+    await store.markDocsDirty(REPO);
+    routes[`GET /repos/${REPO}/git/trees/main`] = () => ({ tree: [{ path: 'docs', type: 'tree', sha: 'd2' }] });
+    routes[`GET /repos/${REPO}/git/trees/d2`] = () => ({ truncated: true, tree: [] });
+    await expect(app().syncDocs(store, NOW)).rejects.toThrow(/Platina/);
+    expect(await store.listRepoDocs(REPO)).toHaveLength(1);
   });
 });

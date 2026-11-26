@@ -249,3 +249,13 @@ describe('re-runs', () => {
     expect(await store.getRun(9001)).toMatchObject({ status: 'in_progress', conclusion: null, completedAt: null });
   });
 });
+
+describe('push before the docs migration has run', () => {
+  it('still does its work on the pull request', async () => {
+    await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
+    const broken = Object.assign(Object.create(store), { markDocsDirty: () => Promise.reject(new Error('column "docs_dirty" does not exist')) });
+    await store.ensureRepo(REPO, 'claude/infotip-a1', 'Platina');
+    await applyGithubEvent(broken, 'push', pushEvent(), NOW);
+    expect(await store.getPr(REPO, 3)).toMatchObject({ headSha: 'bbb222', checks: 'pending' });
+  });
+});

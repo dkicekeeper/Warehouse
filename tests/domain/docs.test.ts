@@ -99,3 +99,20 @@ describe('parseDoc', () => {
     expect(passport?.fields).toMatchObject({ name: data.project.name, stage: data.project.stage, links: data.project.links });
   });
 });
+
+describe('parseDoc: text a database cannot hold', () => {
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+  it('never cuts a text in the middle of a character', () => {
+    const doc = parseDoc(REPO, 'docs/backlog/2026-11-26-emoji.md', 's', `# T\n\n${'я'.repeat(1999)}😀😀`);
+    expect(lone.test(doc!.body)).toBe(false);
+    expect(Array.from(doc!.body).length).toBeLessThanOrEqual(2001);
+  });
+
+  it('drops NUL bytes and broken halves of characters from the title, the text and the fields', () => {
+    const doc = parseDoc(REPO, 'docs/backlog/2026-11-26-nul.md', 's', '---\nstatus: re\u0000ady\nneeds-owner: "a\uD83Db"\n---\n# Ti\u0000tle\n\nBo\uDE00dy\u0000.\n');
+    expect(doc).toMatchObject({ status: 'ready', title: 'Title', body: 'Body.' });
+    expect(doc!.fields['needs-owner']).toBe('ab');
+    expect(JSON.stringify(doc)).not.toMatch(/\\u0000|\\ud83d|\\ude00/i);
+  });
+});

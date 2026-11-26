@@ -316,3 +316,21 @@ describe('backlog', () => {
     expect(view).toMatchObject({ projects: [], ownerTasks: [], syncedAt: null });
   });
 });
+
+describe('before the migration has run', () => {
+  const noTable = () => Promise.reject(new Error('relation "project_docs" does not exist'));
+
+  it('the board still answers, without backlog data', async () => {
+    const broken = Object.assign(Object.create(store), { listDocs: noTable }) as PgStore;
+    const res = await handleBoard(deps({ store: broken }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).backlog).toEqual({ ownerTasks: [], byProject: {} });
+  });
+
+  it('the backlog answers empty', async () => {
+    const broken = Object.assign(Object.create(store), { listDocs: noTable, listDocsState: noTable }) as PgStore;
+    const res = await handleBacklog(deps({ store: broken }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ projects: [], syncedAt: null });
+  });
+});
