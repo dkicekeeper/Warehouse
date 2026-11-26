@@ -198,8 +198,107 @@ def check_headers(tree):
     return found
 
 
+FOLDERS = ["backlog", "plans", "decisions", "domains", "public", "archive"]
+FREE = ("docs/archive/", "docs/public/")  # история и сайт: любые папки и имена
+STAGES = ["idea", "development", "beta", "live", "maintenance"]
+PROJECT_KINDS = ["ios-app", "web", "library", "service"]
+NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+)+$")
+LOCALE = re.compile(r"^[a-z]{2,3}(-[A-Za-z]{2,4})?\.md$")
+
+
+def load_ignore(root):
+    """(пути из docs/.standard.json, нарушения самого файла)."""
+    path = os.path.join(root, "docs", ".standard.json")
+    if not os.path.isfile(path):
+        return [], []
+    try:
+        data = json.loads(read_text(path))
+        return [str(item["path"]).strip("/") for item in data.get("ignore", [])], []
+    except (ValueError, KeyError, TypeError, AttributeError):
+        fix = 'Формат: {"ignore": [{"path": "docs/…", "reason": "…"}]}'
+        return [], [("docs/.standard.json", "tree", "файл не читается как JSON с полем ignore. " + fix)]
+
+
+def ignored(rel, ignore):
+    return any(rel == item or rel.startswith(item + "/") for item in ignore)
+
+
+def walk_docs(root, ignore):
+    """Пути файлов docs/ от корня репозитория, без пропускаемых."""
+    found = []
+    for base, dirs, files in os.walk(os.path.join(root, "docs")):
+        rel_base = os.path.relpath(base, root).replace(os.sep, "/")
+        dirs[:] = sorted(d for d in dirs if not ignored(rel_base + "/" + d, ignore))
+        for name in sorted(files):
+            rel = rel_base + "/" + name
+            if not ignored(rel, ignore):
+                found.append(rel)
+    return found
+
+
+def one_of(values):
+    return ", ".join(str(v) for v in values)
+
+
+def check_structure(root, tree, ignore):
+    found = []
+    docs = os.path.join(root, "docs")
+    for name in sorted(os.listdir(docs)):
+        rel = "docs/" + name
+        if os.path.isdir(os.path.join(docs, name)) and name not in FOLDERS and not ignored(rel, ignore):
+            found.append((rel, "tree", "такой папки в стандарте нет. Разрешены: %s; документ кладётся в docs/ плоско, "
+                          "неактуальное в docs/archive/, путь, который читает инструмент, вносится в docs/.standard.json"
+                          % one_of(FOLDERS)))
+    for name, what in (("README.md", "оглавления"), ("project.md", "паспорта проекта")):
+        if not os.path.isfile(os.path.join(docs, name)):
+            found.append(("docs/" + name, "tree", "нет %s. Образец: standard/template/docs/%s в Warehouse" % (what, name)))
+
+    project = tree["project"]
+    if project is not None:
+        fields = project["fields"]
+        if fields is None:
+            found.append((project["path"], "passport", "нет шапки. Нужны поля name, stage, kind, platforms, standard"))
+        else:
+            def bad(message):
+                found.append((project["path"], "passport", message))
+            for key in ("name", "stage", "kind", "platforms", "standard"):
+                if key not in fields:
+                    bad("нет поля «%s». Нужны name, stage, kind, platforms, standard" % key)
+            for key in fields:
+                if key not in PASSPORT_FIELDS:
+                    bad("неизвестное поле «%s». Допустимы: %s" % (key, one_of(PASSPORT_FIELDS)))
+            if "stage" in fields and fields["stage"] not in STAGES:
+                bad("stage: «%s». Допустимо: %s" % (fields["stage"], one_of(STAGES)))
+            if "kind" in fields and fields["kind"] not in PROJECT_KINDS:
+                bad("kind: «%s». Допустимо: %s" % (fields["kind"], one_of(PROJECT_KINDS)))
+            if "standard" in fields and (isinstance(fields["standard"], bool) or not isinstance(fields["standard"], int)):
+                bad("standard: «%s». Нужно целое число, версия стандарта" % fields["standard"])
+            if "platforms" in fields and not isinstance(fields["platforms"], list):
+                bad("platforms: нужен список в скобках, например [ios]")
+            if "links" in fields and not isinstance(fields["links"], dict):
+                bad("links: нужны вложенные строки «  ключ: значение»")
+
+    files = walk_docs(root, ignore)
+    readme = read_text(os.path.join(docs, "README.md")) if os.path.isfile(os.path.join(docs, "README.md")) else None
+    for rel in files:
+        if rel.startswith(FREE):
+            continue
+        name = rel.rsplit("/", 1)[1]
+        if not (name.startswith(".") or name == "README.md" or NAME.match(name) or LOCALE.match(name)):
+            found.append((rel, "name", "имя не по стандарту. Строчные латинские буквы и цифры, слова через дефис"))
+        inner = rel[len("docs/"):]
+        indexed = inner.endswith(".md") and (("/" not in inner and inner not in ("README.md", "project.md"))
+                                             or inner.startswith("domains/"))
+        if indexed and readme is not None and inner not in readme:
+            found.append((rel, "index", "документа нет в оглавлении. Добавьте строку с «%s» в docs/README.md" % inner))
+    return found
+
+
 def run_checks(root, tree):
-    return check_headers(tree)
+    ignore, found = load_ignore(root)
+    found += check_headers(tree)
+    found += check_structure(root, tree, ignore)
+    return found
 
 
 # ---------------------------------------------------------------- запуск
