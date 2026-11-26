@@ -92,10 +92,10 @@ select vault.create_secret('<адрес>/api/cron/tick', 'warehouse_tick_url');
 select vault.create_secret('<CRON_TOKEN>', 'warehouse_cron_token');
 ```
 
-> Не проверено: синтаксис `0002_tick_cron.sql` (pg_cron + pg_net + Vault) написан по памяти и в
-> тестах не исполняется. Перед применением сверить с документацией Supabase. Проверка после
-> применения: через две минуты в `<адрес>/settings` источник «Сверка с GitHub» показывает
-> «успешно … назад».
+> Синтаксис `0002_tick_cron.sql` сверен с документацией Supabase («Scheduling Edge Functions»,
+> «pg_net») 2026-11-26, но в тестах не исполняется: встроенный Postgres не умеет pg_cron.
+> Проверка после применения: через две минуты в `<адрес>/settings` источник «Сверка с GitHub»
+> показывает «успешно … назад»; ответы тика видны в `select * from net._http_response order by created desc`.
 
 Если на плане проекта нет pg_cron или pg_net — запасной вариант: workflow GitHub Actions по
 расписанию `*/5 * * * *` на `ubuntu-latest`, который делает тот же `POST` с `CRON_TOKEN` из
@@ -121,6 +121,6 @@ select vault.create_secret('<CRON_TOKEN>', 'warehouse_cron_token');
 - `lib/store/db.ts` — подключение к настоящему Postgres через пулер (10 строк; сам SQL хранилища
   проверен на встроенном Postgres).
 - Вход через GitHub в Supabase (`/auth/callback`): проверяется шагом 7.1.
-- `0002_tick_cron.sql` — см. шаг 6.
+- `0002_tick_cron.sql` — сверен с документацией, не исполнялся; см. шаг 6.
 - Хук в настоящей облачной сессии: что событие `Stop` несёт `last_assistant_message`, а прокси
   окружения подставляет токен. Проверяется шагом 7.2.
