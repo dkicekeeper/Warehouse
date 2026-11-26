@@ -179,6 +179,18 @@ describe('workflow_job', () => {
   });
 });
 
+describe('push to the default branch', () => {
+  it('asks for the docs of the repository to be read again', async () => {
+    await store.ensureRepo(REPO, 'main', 'Platina');
+    const repo = (await store.listDocsState()).find((r) => r.repo === REPO);
+    await store.replaceRepoDocs(REPO, [], 'none', NOW);
+    await apply('push', pushEvent({ ref: 'refs/heads/claude/side' }));
+    expect((await store.listDocsState()).find((r) => r.repo === repo!.repo)?.dirty).toBe(false);
+    await apply('push', pushEvent({ ref: 'refs/heads/main' }));
+    expect((await store.listDocsState()).find((r) => r.repo === repo!.repo)?.dirty).toBe(true);
+  });
+});
+
 describe('push', () => {
   it('to a branch with an open PR resets mergeable and marks checks pending', async () => {
     await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
@@ -235,5 +247,15 @@ describe('re-runs', () => {
       workflowRunEvent('in_progress', { run_started_at: '2026-11-25T07:00:00Z', updated_at: '2026-11-25T07:00:05Z' }),
     );
     expect(await store.getRun(9001)).toMatchObject({ status: 'in_progress', conclusion: null, completedAt: null });
+  });
+});
+
+describe('push before the docs migration has run', () => {
+  it('still does its work on the pull request', async () => {
+    await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
+    const broken = Object.assign(Object.create(store), { markDocsDirty: () => Promise.reject(new Error('column "docs_dirty" does not exist')) });
+    await store.ensureRepo(REPO, 'claude/infotip-a1', 'Platina');
+    await applyGithubEvent(broken, 'push', pushEvent(), NOW);
+    expect(await store.getPr(REPO, 3)).toMatchObject({ headSha: 'bbb222', checks: 'pending' });
   });
 });

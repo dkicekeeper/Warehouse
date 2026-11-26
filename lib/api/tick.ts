@@ -15,6 +15,7 @@ export interface TickDeps {
 
 const MINUTE = 60_000;
 const RESYNC_EVERY_MIN = 14;
+const DOCS_EVERY_MIN = 30;
 const EVENTS_KEPT_DAYS = 14;
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -49,7 +50,7 @@ export async function tickIfDue(deps: Omit<TickDeps, 'token'>): Promise<boolean>
 
 async function runTick(deps: Omit<TickDeps, 'token'>): Promise<Response> {
   const { store, now } = deps;
-  const out: { migrated?: string[]; resync: string; recompute: RecomputeResult | string } = {
+  const out: { migrated?: string[]; docs?: string; resync: string; recompute: RecomputeResult | string } = {
     resync: 'skipped',
     recompute: 'not run',
   };
@@ -102,6 +103,25 @@ async function runTick(deps: Omit<TickDeps, 'token'>): Promise<Response> {
   } catch (err) {
     out.recompute = message(err);
     status = 500;
+  }
+
+  // What the repositories say about themselves (the project standard): the marked ones every
+  // tick, all of them every half an hour, which also repairs a push whose webhook never came. Last,
+  // because the first read of many repositories is long and nothing above may wait for it.
+  if (deps.github) {
+    try {
+      const last = (await store.getSources()).find((s) => s.source === 'docs_sync');
+      const lastAttempt = Math.max(last?.lastOkAt?.getTime() ?? 0, last?.lastErrorAt?.getTime() ?? 0);
+      const all = now.getTime() - lastAttempt >= DOCS_EVERY_MIN * MINUTE;
+      if (all || (await store.listDocsState()).some((r) => r.dirty)) {
+        await deps.github.syncDocs(store, now, { all });
+        if (all) await store.touchSource('docs_sync', now, true);
+        out.docs = 'ok';
+      }
+    } catch (err) {
+      out.docs = message(err);
+      await store.touchSource('docs_sync', now, false, out.docs).catch(() => {});
+    }
   }
   return Response.json(out, { status });
 }

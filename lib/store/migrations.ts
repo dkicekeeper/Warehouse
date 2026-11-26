@@ -176,10 +176,36 @@ const SESSIONS_VALID_AFTER = `
 alter table settings add column sessions_valid_after timestamptz;
 `;
 
+/**
+ * What each repository says about itself by the project standard: the passport, tasks, plans and
+ * decisions under docs/. `docs_dirty` asks for a read at the next tick (a push to the default
+ * branch sets it); `docs_tree_sha` is the tree last read, so an unchanged repository costs one call.
+ */
+const PROJECT_DOCS = `
+alter table repos add column docs_tree_sha text;
+alter table repos add column docs_dirty boolean not null default true;
+alter table repos add column docs_synced_at timestamptz;
+
+create table project_docs (
+  repo text not null references repos (full_name) on delete cascade,
+  path text not null,
+  kind text not null check (kind in ('project', 'task', 'plan', 'decision')),
+  doc_id text not null,
+  title text,
+  status text,
+  fields jsonb not null default '{}'::jsonb,
+  body text not null default '',
+  blob_sha text not null,
+  primary key (repo, path)
+);
+create index project_docs_kind on project_docs (kind, status)
+`;
+
 export const MIGRATIONS: Migration[] = [
   { name: '0001_schema', sql: SCHEMA },
   { name: '0002_seed_projects', sql: SEED_PROJECTS },
   { name: '0003_sessions_valid_after', sql: SESSIONS_VALID_AFTER },
+  { name: '0004_project_docs', sql: PROJECT_DOCS },
 ];
 
 const TAG = '$wh_migration$';

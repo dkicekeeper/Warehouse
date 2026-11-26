@@ -237,6 +237,10 @@ function sourceWarnings(sources: SourceReading[], now: Date): string[] {
   if (sessionHook?.lastErrorAt && (!sessionHook.lastOkAt || sessionHook.lastErrorAt.getTime() > sessionHook.lastOkAt.getTime())) {
     out.push(`Хук сессий: ${sessionHook.note ?? 'отчёты не приходят'}`);
   }
+  const docs = by.get('docs_sync');
+  if (docs?.lastErrorAt && (!docs.lastOkAt || docs.lastErrorAt.getTime() > docs.lastOkAt.getTime())) {
+    out.push(`Документы проектов не прочитаны: ${docs.note ?? 'ошибка чтения'}`);
+  }
   if (lateBy('github_resync', 60)) out.push('GitHub не сверялся больше часа — данные о PR и сборках могут быть устаревшими');
   // The hourly session reconcile is optional (a scheduled Claude session cannot list sessions,
   // so it is not set up today). Its lateness is news only where it has run before.

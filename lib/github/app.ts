@@ -1,5 +1,6 @@
 import { createSign } from 'node:crypto';
 import { registerRepo, saveJob, savePr, saveRun } from '@/lib/ingest/github';
+import { docKindOf, parseDoc, type ProjectDoc } from '@/lib/domain/docs';
 import type { Store } from '@/lib/store/store';
 
 const API = 'https://api.github.com';
@@ -21,7 +22,21 @@ export interface GithubApp {
   cancelRun(repo: string, runId: number): Promise<void>;
   /** How many webhook deliveries GitHub could not hand over since `since`. */
   failedDeliveriesSince(since: Date): Promise<number>;
+  /**
+   * Reads what repositories say about themselves by the project standard (docs/project.md,
+   * backlog, plans, decisions) from their default branch: the ones marked for a read, or all of
+   * them with `all`. An unchanged docs tree costs one call; a changed one, a call per changed file.
+   */
+  syncDocs(store: Store, now: Date, opts?: { all?: boolean }): Promise<{ read: number; changed: number }>;
 }
+
+interface TreeEntry {
+  path: string;
+  type: string;
+  sha: string;
+}
+/** Stored as the tree of a repository that has no docs folder. */
+const NO_DOCS = 'none';
 
 interface RepoInfo {
   full_name: string;
@@ -168,7 +183,62 @@ export function createGithubApp(config: {
     return drift;
   }
 
+  /** Returns whether anything changed. */
+  async function syncRepoDocs(store: Store, repo: string, branch: string, known: string | null, token: string, now: Date): Promise<boolean> {
+    const root = await call<{ tree: TreeEntry[] }>('GET', `/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, token);
+    const docsSha = root.tree.find((e) => e.path === 'docs' && e.type === 'tree')?.sha ?? NO_DOCS;
+    const before = await store.listRepoDocs(repo);
+    if (docsSha === known) {
+      await store.replaceRepoDocs(repo, before, docsSha, now);
+      return false;
+    }
+    const docs: ProjectDoc[] = [];
+    if (docsSha !== NO_DOCS) {
+      const tree = await call<{ tree: TreeEntry[]; truncated?: boolean }>('GET', `/repos/${repo}/git/trees/${docsSha}?recursive=1`, token);
+      // A cut-short listing would read as "the rest was deleted".
+      if (tree.truncated) throw new Error('GitHub отдал дерево docs не целиком');
+      const have = new Map(before.map((d) => [d.path, d]));
+      for (const entry of tree.tree) {
+        const path = `docs/${entry.path}`;
+        if (entry.type !== 'blob' || !docKindOf(path)) continue;
+        const same = have.get(path);
+        if (same && same.blobSha === entry.sha) {
+          docs.push(same);
+          continue;
+        }
+        const blob = await call<{ content: string; encoding: string }>('GET', `/repos/${repo}/git/blobs/${entry.sha}`, token);
+        const text = Buffer.from(blob.content, blob.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+        const doc = parseDoc(repo, path, entry.sha, text);
+        if (doc) docs.push(doc);
+      }
+    }
+    await store.replaceRepoDocs(repo, docs, docsSha, now);
+    return true;
+  }
+
   return {
+    async syncDocs(store, now, opts = {}) {
+      const tokens = new Map<string, string>();
+      for (const inst of await load()) for (const info of inst.repos) tokens.set(info.full_name, inst.token);
+      const failures: string[] = [];
+      let read = 0;
+      let changed = 0;
+      for (const state of await store.listDocsState()) {
+        const token = tokens.get(state.repo);
+        if (!token || (!state.dirty && !opts.all)) continue;
+        try {
+          read++;
+          if (await syncRepoDocs(store, state.repo, state.defaultBranch, state.treeSha, token, now)) changed++;
+        } catch (err) {
+          failures.push(`${state.repo}: ${err instanceof Error ? err.message : String(err)}`);
+          // Not again in a minute: the next full read tries it, and the board says why meanwhile.
+          await store.markDocsDirty(state.repo, false).catch(() => {});
+        }
+      }
+      if (failures.length > 0) throw new Error(failures.join('; '));
+      return { read, changed };
+    },
+
     async resync(store, now) {
       const failures: string[] = [];
       let drift = 0;
