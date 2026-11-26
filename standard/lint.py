@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Проверка репозитория на стандарт ведения проекта Warehouse.
+
+    python3 -I standard/lint.py [--root DIR] [--json]
+
+Читает дерево docs/ (паспорт, задачи, планы, решения), проверяет его по правилам стандарта
+(docs/plans/2026-11-26-project-standard-design.md в Warehouse) и печатает по строке на нарушение:
+
+    <путь от корня>: [<код>] <что не так>. <как исправить>
+
+С --json печатает разобранное дерево и нарушения одним объектом: тем же разбором Warehouse
+читает репозитории. Код выхода: 0 чисто, 1 есть нарушения, 2 проверять нечего (нет docs/).
+Только стандартная библиотека.
+"""
+
+import json
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Папка в docs/ → имя списка в выводе.
+KINDS = {"backlog": "backlog", "plans": "plans", "decisions": "decisions"}
+
+FIELDS = {
+    "backlog": ["status", "type", "priority", "size", "created", "updated", "needs-owner", "plan", "branch", "pr"],
+    "plans": ["status", "kind", "created", "updated", "approved", "tasks"],
+    "decisions": ["status", "decided", "by", "supersedes"],
+}
+PASSPORT_FIELDS = ["name", "stage", "kind", "platforms", "standard", "links"]
+
+
+def standard_version():
+    try:
+        with open(os.path.join(HERE, "VERSION"), encoding="utf-8") as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return 0
+
+
+# ---------------------------------------------------------------- шапка
+
+
+def _strip_comment(value):
+    """Убирает « # комментарий» вне кавычек."""
+    quote = None
+    for i, ch in enumerate(value):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#" and (i == 0 or value[i - 1] in " \t"):
+            return value[:i]
+    return value
+
+
+def _scalar(raw):
+    raw = raw.strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+        return raw[1:-1]
+    if raw in ("true", "false"):
+        return raw == "true"
+    if re.fullmatch(r"-?\d+", raw):
+        return int(raw)
+    return raw
+
+
+def _value(raw):
+    raw = _strip_comment(raw).strip()
+    if raw.startswith("[") and raw.endswith("]"):
+        inner = raw[1:-1].strip()
+        return [_scalar(part) for part in inner.split(",") if part.strip()] if inner else []
+    return _scalar(raw)
+
+
+def parse_header(text):
+    """(поля | None, тело, ошибки). None — шапки нет вовсе."""
+    text = text.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return None, text, []
+    end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+    if end is None:
+        return {}, "", ["шапка не закрыта: нет второй строки «---»"]
+    fields, errors, parent = {}, [], None
+    for line in lines[1:end]:
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        match = re.match(r"^(\s*)([A-Za-z][A-Za-z0-9_-]*):(.*)$", line)
+        if not match:
+            errors.append("строка шапки не «ключ: значение»: " + line.strip())
+            continue
+        indent, key, raw = match.group(1), match.group(2), match.group(3)
+        if indent:
+            if parent is None or not isinstance(fields.get(parent), dict):
+                errors.append("вложенный ключ «%s» без родителя" % key)
+                continue
+            fields[parent][key] = _value(raw)
+            continue
+        if not _strip_comment(raw).strip():
+            fields[key] = {}
+            parent = key
+        else:
+            fields[key] = _value(raw)
+            parent = None
+    return fields, "\n".join(lines[end + 1:]), errors
+
+
+def title_of(body):
+    in_code = False
+    for line in body.split("\n"):
+        if line.startswith("```"):
+            in_code = not in_code
+        elif not in_code and line.startswith("# "):
+            return line[2:].strip()
+    return None
+
+
+# ---------------------------------------------------------------- дерево
+
+
+def read_text(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def _records(root, folder, archived):
+    base = os.path.join(root, "docs", "archive", folder) if archived else os.path.join(root, "docs", folder)
+    found = []
+    if not os.path.isdir(base):
+        return found
+    for name in sorted(os.listdir(base)):
+        full = os.path.join(base, name)
+        if not name.endswith(".md") or not os.path.isfile(full):
+            continue
+        fields, body, errors = parse_header(read_text(full))
+        found.append({
+            "id": name[:-3],
+            "path": os.path.relpath(full, root).replace(os.sep, "/"),
+            "archived": archived,
+            "fields": fields,
+            "body": body,
+            "errors": errors,
+        })
+    return found
+
+
+def load_tree(root):
+    """Разобранное дерево: паспорт и записи с сырыми полями (для проверок и для --json)."""
+    tree = {"project": None, "backlog": [], "plans": [], "decisions": []}
+    passport = os.path.join(root, "docs", "project.md")
+    if os.path.isfile(passport):
+        fields, body, errors = parse_header(read_text(passport))
+        tree["project"] = {"path": "docs/project.md", "fields": fields, "body": body, "errors": errors}
+    for folder in KINDS:
+        tree[folder] = _records(root, folder, False) + _records(root, folder, True)
+    return tree
+
+
+def public_tree(tree):
+    """Форма --json: только описанные поля, отсутствующие — null."""
+    out = {"standard": standard_version(), "project": None, "backlog": [], "plans": [], "decisions": []}
+    project = tree["project"]
+    if project is not None:
+        fields = project["fields"] or {}
+        item = {key: fields.get(key) for key in PASSPORT_FIELDS}
+        item["platforms"] = item["platforms"] if isinstance(item["platforms"], list) else []
+        item["links"] = item["links"] if isinstance(item["links"], dict) else {}
+        item["title"] = title_of(project["body"])
+        out["project"] = item
+    for folder in KINDS:
+        for record in tree[folder]:
+            fields = record["fields"] or {}
+            item = {"id": record["id"], "path": record["path"], "archived": record["archived"],
+                    "title": title_of(record["body"])}
+            for key in FIELDS[folder]:
+                item[key] = fields.get(key)
+            if folder == "plans" and not isinstance(item["tasks"], list):
+                item["tasks"] = []
+            out[folder].append(item)
+    return out
+
+
+# ---------------------------------------------------------------- проверки
+
+
+def check_headers(tree):
+    """Шапка, которую не удалось разобрать."""
+    found = []
+    records = [tree["project"]] if tree["project"] else []
+    for folder in KINDS:
+        records += tree[folder]
+    for record in records:
+        for error in record["errors"]:
+            found.append((record["path"], "header", error + ". Шапка: строки «ключ: значение» между двумя «---»"))
+    return found
+
+
+def run_checks(root, tree):
+    return check_headers(tree)
+
+
+# ---------------------------------------------------------------- запуск
+
+
+def main(argv):
+    root, as_json = ".", False
+    args = list(argv)
+    while args:
+        arg = args.pop(0)
+        if arg == "--root" and args:
+            root = args.pop(0)
+        elif arg == "--json":
+            as_json = True
+        else:
+            print("lint.py [--root DIR] [--json]", file=sys.stderr)
+            return 2
+    if not os.path.isdir(os.path.join(root, "docs")):
+        print("%s: нет папки docs/, проверять нечего" % root, file=sys.stderr)
+        return 2
+    tree = load_tree(root)
+    violations = sorted(set(run_checks(root, tree)))
+    if as_json:
+        out = public_tree(tree)
+        out["violations"] = [{"path": p, "code": c, "message": m} for p, c, m in violations]
+        print(json.dumps(out, ensure_ascii=False, indent=1))
+    else:
+        for path, code, message in violations:
+            print("%s: [%s] %s" % (path, code, message))
+    return 1 if violations else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
