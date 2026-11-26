@@ -179,6 +179,18 @@ describe('workflow_job', () => {
   });
 });
 
+describe('push to the default branch', () => {
+  it('asks for the docs of the repository to be read again', async () => {
+    await store.ensureRepo(REPO, 'main', 'Platina');
+    const repo = (await store.listDocsState()).find((r) => r.repo === REPO);
+    await store.replaceRepoDocs(REPO, [], 'none', NOW);
+    await apply('push', pushEvent({ ref: 'refs/heads/claude/side' }));
+    expect((await store.listDocsState()).find((r) => r.repo === repo!.repo)?.dirty).toBe(false);
+    await apply('push', pushEvent({ ref: 'refs/heads/main' }));
+    expect((await store.listDocsState()).find((r) => r.repo === repo!.repo)?.dirty).toBe(true);
+  });
+});
+
 describe('push', () => {
   it('to a branch with an open PR resets mergeable and marks checks pending', async () => {
     await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));

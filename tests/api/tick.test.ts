@@ -12,6 +12,8 @@ let github: GithubApp;
 let failedDeliveries: number;
 let drift: number;
 let migrations: string[];
+let docsError: string | null;
+let docsLog: string[];
 
 beforeEach(async () => {
   ({ store } = await testStore());
@@ -27,7 +29,14 @@ beforeEach(async () => {
     enrichPr: async () => {},
     cancelRun: async () => {},
     failedDeliveriesSince: async () => failedDeliveries,
+    syncDocs: async (_store, _now, opts) => {
+      docsLog.push(opts?.all ? 'docs:all' : 'docs');
+      if (docsError) throw new Error(docsError);
+      return { read: 1, changed: 1 };
+    },
   };
+  docsError = null;
+  docsLog = [];
 });
 
 const post = (auth: string | null = `Bearer ${TOKEN}`) =>
@@ -76,7 +85,7 @@ describe('tick', () => {
   it('first run: resyncs GitHub, then recomputes, and records the resync as healthy', async () => {
     const res = await tick();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ resync: 'ok', recompute: { sent: 0, edited: 0, failed: 0 } });
+    expect(await res.json()).toMatchObject({ resync: 'ok', recompute: { sent: 0, edited: 0, failed: 0 } });
     expect(log).toEqual(['resync', 'recompute']);
     expect((await store.getSources()).find((s) => s.source === 'github_resync')).toMatchObject({ lastOkAt: NOW });
   });
@@ -213,5 +222,44 @@ describe('heartbeat: the tick that rides on ordinary traffic', () => {
     const snap = await store.loadSnapshot(NOW);
     const view = buildBoardView(snap, [], { running: 0, waiting: 0, freeSlotInMin: 0, rows: [] }, await store.getSources(), NOW, await store.getSettings());
     expect(view.warnings).toEqual([]);
+  });
+});
+
+describe('tick: project documents', () => {
+  it('reads every repository on the first tick and records the source', async () => {
+    await store.ensureRepo('o/r', 'main', 'R');
+    const res = await tick();
+    expect(docsLog).toContain('docs:all');
+    expect((await res.json()).docs).toBe('ok');
+    expect((await store.getSources()).find((s) => s.source === 'docs_sync')?.lastOkAt).toEqual(NOW);
+  });
+
+  it('reads only marked repositories between full reads, and nothing when none is marked', async () => {
+    await store.ensureRepo('o/r', 'main', 'R');
+    await store.replaceRepoDocs('o/r', [], 'none', minutesAgo(10));
+    await store.touchSource('docs_sync', minutesAgo(10), true);
+    await tick();
+    expect(docsLog).toEqual([]);
+    await store.markDocsDirty('o/r');
+    await tick();
+    expect(docsLog).toEqual(['docs']);
+  });
+
+  it('reads everything again half an hour after the last full read', async () => {
+    await store.ensureRepo('o/r', 'main', 'R');
+    await store.replaceRepoDocs('o/r', [], 'none', minutesAgo(40));
+    await store.touchSource('docs_sync', minutesAgo(31), true);
+    await tick();
+    expect(docsLog).toContain('docs:all');
+  });
+
+  it('records a failure and still recomputes', async () => {
+    await store.ensureRepo('o/r', 'main', 'R');
+    docsError = 'o/r: GitHub 404';
+    const res = await tick();
+    expect(res.status).toBe(200);
+    expect((await res.json()).docs).toContain('404');
+    expect(log).toContain('recompute');
+    expect((await store.getSources()).find((s) => s.source === 'docs_sync')?.note).toContain('404');
   });
 });

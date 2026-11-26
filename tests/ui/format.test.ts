@@ -43,3 +43,24 @@ describe('secondsAgo', () => {
     expect(secondsAgo(t.toISOString(), new Date(t.getTime() + 185_000))).toBe('обновлено 3 мин назад');
   });
 });
+
+describe('backlog labels', () => {
+  it('names a task by what the owner cares about', async () => {
+    const { taskLabel } = await import('@/components/format');
+    expect(taskLabel({ status: 'blocked', needsOwner: 'ключ' })).toBe('ждёт вас');
+    expect(taskLabel({ status: 'ready', needsOwner: 'вопрос' })).toBe('ждёт вас');
+    expect(taskLabel({ status: 'blocked', needsOwner: null })).toBe('заблокирована');
+    expect(taskLabel({ status: 'in-progress', needsOwner: null })).toBe('в работе');
+    expect(taskLabel({ status: 'ready', needsOwner: null })).toBe('готова');
+    expect(taskLabel({ status: 'idea', needsOwner: null })).toBe('идея');
+    expect(taskLabel({ status: null, needsOwner: null })).toBe('без статуса');
+    expect(taskLabel({ status: 'weird', needsOwner: null })).toBe('weird');
+  });
+
+  it('names stages, plan states and task types in Russian, and leaves the unknown as it is', async () => {
+    const { stageLabel, planLabel, typeLabel } = await import('@/components/format');
+    expect(['idea', 'development', 'beta', 'live', 'maintenance', null, 'x'].map(stageLabel)).toEqual(['идея', 'разработка', 'бета', 'выпущен', 'поддержка', '', 'x']);
+    expect(['draft', 'approved', 'in-progress', null].map(planLabel)).toEqual(['черновик', 'одобрен', 'в работе', 'без статуса']);
+    expect(['feature', 'bug', 'chore', 'research', 'content', 'growth', null].map(typeLabel)).toEqual(['возможность', 'ошибка', 'рутина', 'исследование', 'контент', 'рост', '']);
+  });
+});

@@ -1,14 +1,23 @@
 import type { DesiredItem } from '@/lib/domain/attention';
 import type { ItemChanges, ItemPatch, StoredItem } from '@/lib/domain/items';
+import type { ProjectDoc } from '@/lib/domain/docs';
 import type { Job, Project, PullRequest, Repo, Run, Session, Settings, Snapshot } from '@/lib/domain/types';
 
-export type SourceName = 'github_webhook' | 'github_resync' | 'session_hook' | 'reconcile' | 'heartbeat';
+export type SourceName = 'github_webhook' | 'github_resync' | 'session_hook' | 'reconcile' | 'heartbeat' | 'docs_sync';
 
 export interface SourceHealth {
   source: SourceName;
   lastOkAt: Date | null;
   lastErrorAt: Date | null;
   note: string | null;
+}
+
+export interface DocsState {
+  repo: string;
+  defaultBranch: string;
+  treeSha: string | null;
+  dirty: boolean;
+  syncedAt: Date | null;
 }
 
 export type SessionPatch = Partial<Omit<Session, 'id'>> & { id: string };
@@ -65,6 +74,15 @@ export interface Store {
   renameProject(id: string, name: string): Promise<void>;
   /** Moves a repository to another project and drops the project it leaves if that is now empty. */
   moveRepo(fullName: string, projectId: string): Promise<void>;
+
+  /** Every record of the project standard read so far, all repositories. */
+  listDocs(): Promise<ProjectDoc[]>;
+  listRepoDocs(repo: string): Promise<ProjectDoc[]>;
+  /** The whole set a repository holds now: what is not in it is gone. Clears the "read again" mark. */
+  replaceRepoDocs(repo: string, docs: ProjectDoc[], treeSha: string, now: Date): Promise<void>;
+  /** Asks for the repository's docs to be read at the next tick. */
+  markDocsDirty(repo: string): Promise<void>;
+  listDocsState(): Promise<DocsState[]>;
 
   touchSource(source: SourceName, at: Date, ok: boolean, note?: string | null): Promise<void>;
   recordEvent(source: SourceName, deliveryId: string, payload: unknown, now: Date): Promise<'new' | 'duplicate'>;

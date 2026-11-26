@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  handleBacklog,
   handleBoard,
   handleCancelRun,
   handleItemAction,
@@ -30,6 +31,7 @@ const deps = (over: Partial<OwnerDeps> = {}): OwnerDeps => ({
     resync: async () => ({ drift: 0 }),
     enrichPr: async () => {},
     failedDeliveriesSince: async () => 0,
+    syncDocs: async () => ({ read: 0, changed: 0 }),
     cancelRun: async (repo, id) => {
       cancelled.push(`${repo}#${id}`);
     },
@@ -62,6 +64,7 @@ async function oneItem(): Promise<string> {
 describe('every owner endpoint refuses anyone else with an empty 401', () => {
   it.each([
     ['board', () => handleBoard(deps())],
+    ['backlog', () => handleBacklog(deps())],
     ['item action', () => handleItemAction(post({ action: 'dismiss' }), 'x', deps())],
     ['cancel run', () => handleCancelRun('1', deps())],
     ['settings read', () => handleSettingsGet(deps())],
@@ -278,5 +281,38 @@ describe('settings', () => {
     expect((await handleSettingsPost(post({ action: 'moveRepo', repo: 'o/Tenra', projectId: 'ghost' }), deps())).status).toBe(400);
     expect((await handleSettingsPost(post({ action: 'assignSession', sessionId: 's', projectId: 'ghost' }), deps())).status).toBe(400);
     expect((await handleSettingsPost(post({ action: 'dropDatabase' }), deps())).status).toBe(400);
+  });
+});
+
+describe('backlog', () => {
+  const task = {
+    repo: 'dkicekeeper/Platina', path: 'docs/backlog/2026-11-26-device-check.md', kind: 'task' as const, id: '2026-11-26-device-check',
+    title: 'Проверка на устройстве', status: 'blocked', fields: { status: 'blocked', priority: 1, 'needs-owner': 'проверить на iPhone' },
+    body: 'Зачем: видно только на телефоне.', blobSha: 'a',
+  };
+
+  it('returns the records of the projects and when they were last read', async () => {
+    await store.ensureRepo('dkicekeeper/Platina', 'main', 'Platina');
+    await store.replaceRepoDocs('dkicekeeper/Platina', [task], 't1', minutesAgo(3));
+    const res = await handleBacklog(deps());
+    expect(res.status).toBe(200);
+    const view = await res.json();
+    expect(view.projects).toHaveLength(1);
+    expect(view.projects[0]).toMatchObject({ name: 'Platina', counts: { open: 1, needsOwner: 1 } });
+    expect(view.ownerTasks[0]).toMatchObject({ title: 'Проверка на устройстве', needsOwner: 'проверить на iPhone' });
+    expect(view.syncedAt).toBe(minutesAgo(3).toISOString());
+  });
+
+  it('puts the owner tasks and the counts of each project on the board', async () => {
+    const repo = await store.ensureRepo('dkicekeeper/Platina', 'main', 'Platina');
+    await store.replaceRepoDocs('dkicekeeper/Platina', [task], 't1', NOW);
+    const board = await (await handleBoard(deps())).json();
+    expect(board.backlog.ownerTasks).toHaveLength(1);
+    expect(board.backlog.byProject[repo.projectId]).toMatchObject({ open: 1, needsOwner: 1, stage: null });
+  });
+
+  it('is empty before anything was read', async () => {
+    const view = await (await handleBacklog(deps())).json();
+    expect(view).toMatchObject({ projects: [], ownerTasks: [], syncedAt: null });
   });
 });

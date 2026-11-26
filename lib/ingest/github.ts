@@ -212,6 +212,9 @@ export async function applyGithubEvent(store: Store, event: string, payload: unk
       const push = PushEvent.safeParse(payload);
       if (!push.success || push.data.deleted || !push.data.ref.startsWith('refs/heads/')) return;
       const branch = push.data.ref.slice('refs/heads/'.length);
+      // A push to the default branch may have changed the project's docs: read them at the next tick.
+      const known = await store.getRepo(repo);
+      if (known && known.defaultBranch === branch) await store.markDocsDirty(repo);
       const pr = await store.findOpenPr(repo, branch);
       if (!pr || pr.headSha === push.data.after) return;
       // The pull_request event with the details follows; until then nothing about the new head is known.

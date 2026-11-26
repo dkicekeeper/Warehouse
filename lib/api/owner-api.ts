@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
+import { buildBacklogView, summarizeBacklog } from '@/lib/domain/backlog';
 import { buildBoardView } from '@/lib/domain/board';
 import { dismissPatch, snoozePatch } from '@/lib/domain/items';
 import { estimateQueue } from '@/lib/domain/queue';
@@ -59,7 +60,20 @@ export async function handleBoard(deps: OwnerDeps): Promise<Response> {
     store.getSettings(),
   ]);
   const queue = estimateQueue({ runs: snap.runs, jobs: snap.jobs, history, sessions: snap.sessions }, now, settings);
-  return json(buildBoardView(snap, items, queue, sources, now, settings));
+  const backlog = summarizeBacklog(buildBacklogView(snap.projects, snap.repos, await store.listDocs(), now));
+  return json({ ...buildBoardView(snap, items, queue, sources, now, settings), backlog });
+}
+
+/** Tasks, plans and decisions of every project, as their repositories hold them. */
+export async function handleBacklog(deps: OwnerDeps): Promise<Response> {
+  if (!(await deps.isOwner())) return empty(401);
+  const { store, now } = deps;
+  const [snap, docs, state] = await Promise.all([store.loadSnapshot(now), store.listDocs(), store.listDocsState()]);
+  const read = state.map((s) => s.syncedAt?.getTime() ?? 0).filter((t) => t > 0);
+  return json({
+    ...buildBacklogView(snap.projects, snap.repos, docs, now),
+    syncedAt: read.length > 0 ? new Date(Math.max(...read)).toISOString() : null,
+  });
 }
 
 const ItemAction = z.union([

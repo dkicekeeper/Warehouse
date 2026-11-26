@@ -30,3 +30,20 @@ export function secondsAgo(generatedAt: string, now: Date): string {
   if (s < 60) return `обновлено ${s} с назад`;
   return `обновлено ${Math.floor(s / 60)} мин назад`;
 }
+
+const pick = (map: Record<string, string>, key: string | null, none: string) => (key === null ? none : (map[key] ?? key));
+
+/** How a task is named on the pages: what waits for the owner is said first, whatever its status. */
+export function taskLabel(task: { status: string | null; needsOwner: string | null }): string {
+  if (task.needsOwner) return 'ждёт вас';
+  return pick({ 'in-progress': 'в работе', ready: 'готова', blocked: 'заблокирована', idea: 'идея' }, task.status, 'без статуса');
+}
+
+export const stageLabel = (stage: string | null) =>
+  pick({ idea: 'идея', development: 'разработка', beta: 'бета', live: 'выпущен', maintenance: 'поддержка' }, stage, '');
+
+export const planLabel = (status: string | null) =>
+  pick({ draft: 'черновик', approved: 'одобрен', 'in-progress': 'в работе' }, status, 'без статуса');
+
+export const typeLabel = (type: string | null) =>
+  pick({ feature: 'возможность', bug: 'ошибка', chore: 'рутина', research: 'исследование', content: 'контент', growth: 'рост' }, type, '');

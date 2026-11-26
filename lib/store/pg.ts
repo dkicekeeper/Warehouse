@@ -15,7 +15,8 @@ import {
   type Settings,
   type Snapshot,
 } from '@/lib/domain/types';
-import type { SessionPatch, SourceHealth, SourceName, Store } from './store';
+import type { DocsState, SessionPatch, SourceHealth, SourceName, Store } from './store';
+import type { DocKind, ProjectDoc } from '@/lib/domain/docs';
 
 /** The one thing the store needs from a Postgres driver. */
 export interface Sql {
@@ -117,6 +118,18 @@ const toItem = (r: Row): StoredItem => ({
   notifiedText: str(r.notified_text),
   telegramMessageId: r.telegram_message_id === null || r.telegram_message_id === undefined ? null : num(r.telegram_message_id),
   resolvedAt: date(r.resolved_at),
+});
+
+const toDoc = (r: Row): ProjectDoc => ({
+  repo: String(r.repo),
+  path: String(r.path),
+  kind: String(r.kind) as DocKind,
+  id: String(r.doc_id),
+  title: r.title == null ? null : String(r.title),
+  status: r.status == null ? null : String(r.status),
+  fields: (typeof r.fields === 'string' ? JSON.parse(r.fields) : r.fields) as Record<string, unknown>,
+  body: String(r.body),
+  blobSha: String(r.blob_sha),
 });
 
 const toRepo = (r: Row): Repo => ({
@@ -496,6 +509,57 @@ export class PgStore implements Store {
     await this.sql.query('update sessions set project_id = $2 where project_id = $1', [repo.projectId, projectId]);
     await this.sql.query('update items set project_id = $2 where project_id = $1', [repo.projectId, projectId]);
     await this.sql.query('delete from projects where id = $1', [repo.projectId]);
+  }
+
+  async listDocs(): Promise<ProjectDoc[]> {
+    return (await this.sql.query('select * from project_docs order by repo, path')).map(toDoc);
+  }
+
+  async listRepoDocs(repo: string): Promise<ProjectDoc[]> {
+    return (await this.sql.query('select * from project_docs where repo = $1 order by path', [repo])).map(toDoc);
+  }
+
+  async replaceRepoDocs(repo: string, docs: ProjectDoc[], treeSha: string, now: Date): Promise<void> {
+    // One statement, so a reader never sees half a repository.
+    await this.sql.query(
+      `with incoming as (
+         select * from jsonb_to_recordset($2::text::jsonb)
+           as x(path text, kind text, doc_id text, title text, status text, fields jsonb, body text, blob_sha text)
+       ), gone as (
+         delete from project_docs d where d.repo = $1 and not exists (select 1 from incoming i where i.path = d.path)
+       ), put as (
+         insert into project_docs (repo, path, kind, doc_id, title, status, fields, body, blob_sha)
+         select $1, path, kind, doc_id, title, status, coalesce(fields, '{}'::jsonb), coalesce(body, ''), blob_sha from incoming
+         on conflict (repo, path) do update set kind = excluded.kind, doc_id = excluded.doc_id, title = excluded.title,
+           status = excluded.status, fields = excluded.fields, body = excluded.body, blob_sha = excluded.blob_sha
+       )
+       update repos set docs_tree_sha = $3, docs_dirty = false, docs_synced_at = $4::timestamptz where full_name = $1`,
+      [
+        repo,
+        JSON.stringify(
+          docs.map((d) => ({
+            path: d.path, kind: d.kind, doc_id: d.id, title: d.title, status: d.status, fields: d.fields, body: d.body, blob_sha: d.blobSha,
+          })),
+        ),
+        treeSha,
+        ts(now),
+      ],
+    );
+  }
+
+  async markDocsDirty(repo: string): Promise<void> {
+    await this.sql.query('update repos set docs_dirty = true where full_name = $1', [repo]);
+  }
+
+  async listDocsState(): Promise<DocsState[]> {
+    const rows = await this.sql.query('select full_name, default_branch, docs_tree_sha, docs_dirty, docs_synced_at from repos order by full_name');
+    return rows.map((r) => ({
+      repo: String(r.full_name),
+      defaultBranch: String(r.default_branch),
+      treeSha: r.docs_tree_sha == null ? null : String(r.docs_tree_sha),
+      dirty: r.docs_dirty === true,
+      syncedAt: r.docs_synced_at == null ? null : new Date(r.docs_synced_at as string),
+    }));
   }
 
   async touchSource(source: SourceName, at: Date, ok: boolean, note: string | null = null): Promise<void> {

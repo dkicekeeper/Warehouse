@@ -61,6 +61,7 @@ describe('a stranger', () => {
 
   it.each([
     ['GET', '/api/board'],
+    ['GET', '/api/backlog'],
     ['GET', '/api/settings'],
     ['POST', '/api/settings'],
     ['POST', '/api/items/anything'],

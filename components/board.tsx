@@ -3,8 +3,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AttentionRow, BoardView, ProjectView, QueueRowView } from '@/lib/domain/board';
-import { approx, duration, plural, secondsAgo } from './format';
+import type { BacklogSummary, TaskRow } from '@/lib/domain/backlog';
+import type { AttentionRow, BoardView as BaseBoardView, ProjectView, QueueRowView } from '@/lib/domain/board';
+import { approx, duration, plural, secondsAgo, stageLabel } from './format';
+
+/** The board as /api/board sends it: the dispatch view plus what the projects' docs say. */
+type BoardView = BaseBoardView & { backlog?: BacklogSummary };
 
 const POLL_MS = 15_000;
 
@@ -85,6 +89,7 @@ export function Board() {
             {offline ? 'нет связи · ' : ''}
             {board ? secondsAgo(board.generatedAt, now ?? new Date(board.generatedAt)) : offline ? '' : 'загрузка…'}
           </span>
+          <Link href="/backlog">Задачи</Link>
           <Link href="/settings">Настройки</Link>
         </div>
       </header>
@@ -103,8 +108,9 @@ export function Board() {
       {board && (
         <>
           <Attention rows={board.attention} snoozed={board.snoozed} act={act} />
+          {board.backlog && board.backlog.ownerTasks.length > 0 && <OwnerTasks tasks={board.backlog.ownerTasks} />}
           <Queue queue={board.queue} act={act} />
-          <Projects projects={board.projects} />
+          <Projects projects={board.projects} backlog={board.backlog?.byProject ?? {}} />
         </>
       )}
     </div>
@@ -297,7 +303,28 @@ const STATE: Record<string, string> = {
   unknown: 'без статуса',
 };
 
-function Projects({ projects }: { projects: ProjectView[] }) {
+/** Tasks from the projects' backlogs that only the owner can move. They stay until the task changes. */
+function OwnerTasks({ tasks }: { tasks: TaskRow[] }) {
+  return (
+    <Section title="Задачи ждут вас" aside={<Link href="/backlog">все задачи</Link>}>
+      <ul className="divide-y divide-line">
+        {tasks.map((t) => (
+          <li key={`${t.repo}/${t.id}`} data-testid="owner-task" className="px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <Chip>{t.project}</Chip>
+              <a href={t.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 text-ink underline-offset-2 hover:underline">
+                {t.title}
+              </a>
+            </div>
+            <p className="mt-1 text-xs text-muted">Нужно от вас: {t.needsOwner}</p>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function Projects({ projects, backlog }: { projects: ProjectView[]; backlog: BacklogSummary['byProject'] }) {
   return (
     <Section title="Проекты">
       {projects.length === 0 ? (
@@ -313,6 +340,7 @@ function Projects({ projects }: { projects: ProjectView[] }) {
                     {plural(p.sessions.length, ['сессия', 'сессии', 'сессий'])} · {p.prs.length} PR
                     {p.waiting > 0 && <span className="text-accent"> · {p.waiting} ждёт вас</span>}
                   </span>
+                  <ProjectDocs id={p.id} docs={p.id ? backlog[p.id] : undefined} />
                 </summary>
                 <ProjectBody project={p} />
               </details>
@@ -321,6 +349,20 @@ function Projects({ projects }: { projects: ProjectView[] }) {
         </ul>
       )}
     </Section>
+  );
+}
+
+/** What the project's own docs say: its stage and how many tasks are open, with a way to them. */
+function ProjectDocs({ id, docs }: { id: string | null; docs: BacklogSummary['byProject'][string] | undefined }) {
+  if (!id || !docs) return null;
+  return (
+    <span className="ml-auto flex items-baseline gap-2 text-xs text-muted" data-testid="project-docs">
+      {docs.stage && <span>{stageLabel(docs.stage)}</span>}
+      <Link href={`/backlog?project=${encodeURIComponent(id)}`}>
+        {plural(docs.open, ['задача', 'задачи', 'задач'])}
+        {docs.needsOwner > 0 && <span className="text-accent"> · {docs.needsOwner} ждёт вас</span>}
+      </Link>
+    </span>
   );
 }
 
