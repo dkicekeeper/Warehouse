@@ -87,12 +87,22 @@ export function createGithubApp(config: {
 
   async function syncPr(store: Store, repo: string, number: number, token: string): Promise<void> {
     const pr = await savePr(store, repo, await call<unknown>('GET', `/repos/${repo}/pulls/${number}`, token));
-    if (!pr || pr.sessionId || pr.state !== 'open') return;
+    if (!pr || pr.state !== 'open') return;
+    // A PR can sit green for days; its runs are long out of the "last day" listing, and without
+    // them it would look unchecked. Ask for the runs of its head commit directly.
+    const runs = await call<{ workflow_runs: unknown[] }>(
+      'GET',
+      `/repos/${repo}/actions/runs?per_page=100&head_sha=${encodeURIComponent(pr.headSha)}`,
+      token,
+    );
+    for (const raw of runs.workflow_runs) await saveRun(store, repo, raw);
+    if (pr.sessionId) return;
     const commits = await call<{ commit: { message: string } }[]>('GET', `/repos/${repo}/pulls/${number}/commits?per_page=100`, token);
     for (const c of commits.slice().reverse()) {
       const m = SESSION_TRAILER.exec(c.commit.message);
       if (m?.[1]) {
-        await store.upsertPr({ ...pr, sessionId: m[1] });
+        const current = (await store.getPr(repo, number)) ?? pr;
+        await store.upsertPr({ ...current, sessionId: m[1] });
         return;
       }
     }

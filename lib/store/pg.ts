@@ -25,7 +25,9 @@ export interface Sql {
 type Row = Record<string, unknown>;
 
 // Values cross the driver boundary in forms every driver agrees on: timestamps as ISO strings
-// cast in SQL, arrays and JSON as jsonb text. bigint comes back as a string from some drivers.
+// cast in SQL; arrays and JSON as text cast `::text::jsonb`. The double cast matters: with a bare
+// `::jsonb` postgres.js sees a jsonb parameter and JSON-encodes the already-encoded string, so the
+// server receives a string scalar instead of the array. bigint comes back as a string from some drivers.
 const ts = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 const date = (v: unknown): Date | null => (v === null || v === undefined ? null : v instanceof Date ? v : new Date(String(v)));
 const must = (v: unknown): Date => date(v) as Date;
@@ -192,7 +194,7 @@ function settingsColumns(p: Partial<Settings>): Record<string, unknown> {
   return c;
 }
 
-const IDS = 'select jsonb_array_elements_text($1::jsonb)';
+const IDS = 'select jsonb_array_elements_text($1::text::jsonb)';
 
 export class PgStore implements Store {
   constructor(private readonly sql: Sql) {}
@@ -448,7 +450,7 @@ export class PgStore implements Store {
   async upsertJob(j: Job): Promise<void> {
     await this.sql.query(
       `insert into jobs (id, run_id, repo, name, labels, status, conclusion, created_at, started_at, completed_at)
-       values ($1, $2, $3, $4, array(select jsonb_array_elements_text($5::jsonb)), $6, $7,
+       values ($1, $2, $3, $4, array(select jsonb_array_elements_text($5::text::jsonb)), $6, $7,
                $8::timestamptz, $9::timestamptz, $10::timestamptz)
        on conflict (id) do update set
          run_id = excluded.run_id, repo = excluded.repo, name = excluded.name, labels = excluded.labels,
@@ -502,7 +504,7 @@ export class PgStore implements Store {
 
   async recordEvent(source: SourceName, deliveryId: string, payload: unknown, now: Date): Promise<'new' | 'duplicate'> {
     const rows = await this.sql.query(
-      `insert into events (source, delivery_id, payload, received_at) values ($1, $2, $3::jsonb, $4::timestamptz)
+      `insert into events (source, delivery_id, payload, received_at) values ($1, $2, $3::text::jsonb, $4::timestamptz)
        on conflict (source, delivery_id) do nothing returning delivery_id`,
       [source, deliveryId, JSON.stringify(payload ?? null), ts(now)],
     );

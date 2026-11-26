@@ -68,6 +68,20 @@ describe('reconcileItems', () => {
     });
   });
 
+  it('a note that becomes a request is announced again, even if the note already went out', () => {
+    const note = stored({ kind: 'session_silent', level: 'note', text: 'сессия молчит: жду CI', telegramMessageId: null });
+    const d = desired({ kind: 'session_needs_owner', level: 'request', text: 'проверить сборку 78' });
+    expect(reconcileItems([note], [d], NOW)).toEqual({
+      insert: [],
+      update: [{ id: 'i1', patch: { text: 'проверить сборку 78', kind: 'session_needs_owner', level: 'request', notifiedAt: null } }],
+    });
+  });
+
+  it('a request that fades into a note is not announced again', () => {
+    const out = reconcileItems([stored()], [desired({ kind: 'session_silent', level: 'note' })], NOW);
+    expect(out.update[0]?.patch).not.toHaveProperty('notifiedAt');
+  });
+
   it('keeps a dismissed item dismissed while its text is the one that was dismissed', () => {
     const item = stored({ status: 'dismissed', dismissedText: 'смержить PR #3' });
     expect(reconcileItems([item], [desired()], NOW)).toEqual(NONE);

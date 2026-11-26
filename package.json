@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "next build && vitest run --config vitest.e2e.config.mts"
+    "test:e2e": "next build && vitest run --config vitest.e2e.config.mts",
+    "test:pg": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://postgres@127.0.0.1:54329/postgres} vitest run"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

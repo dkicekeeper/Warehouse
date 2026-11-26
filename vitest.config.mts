@@ -6,5 +6,7 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    // One real database is shared by every file; the in-process one is per worker.
+    fileParallelism: !process.env.TEST_DATABASE_URL,
   },
 });

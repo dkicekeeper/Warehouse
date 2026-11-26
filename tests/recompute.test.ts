@@ -69,6 +69,40 @@ describe('recompute', () => {
     expect(notifier.sent).toHaveLength(1);
   });
 
+  it('a message that was sent but could not be recorded is not sent again the next minute', async () => {
+    await store.upsertSession(asking());
+    const broken = Object.create(store) as PgStore;
+    let failures = 0;
+    broken.markNotified = async () => {
+      failures++;
+      throw new Error('db hiccup');
+    };
+    const first = await recompute(broken, { now: NOW, notifier, baseUrl: BASE });
+    expect(first).toEqual({ sent: 1, edited: 0, failed: 0 });
+    expect(failures).toBeGreaterThanOrEqual(1);
+    // The claim is kept, so the healthy next minute does not repeat the message.
+    await go(minutesFromNow(1));
+    expect(notifier.sent).toHaveLength(1);
+  });
+
+  it('when the digest cannot be sent, the requests in it still go out on their own', async () => {
+    await store.patchSettings({ lastDigestAt: minutesAgo(30 * 60) });
+    await store.upsertSession(asking());
+    await store.upsertSession(session({ projectId: null, state: 'unknown', stateText: 'хвост', reportedAt: minutesAgo(3) }));
+    const original = notifier.send.bind(notifier);
+    notifier.send = async (chatId, html) => {
+      if (html.includes('Заметки')) throw new Error('Telegram 400: message is too long');
+      return original(chatId, html);
+    };
+    const result = await go();
+    expect(result).toMatchObject({ sent: 1, failed: 1 });
+    expect(notifier.sent).toHaveLength(1);
+    expect(notifier.sent[0]?.html).toContain('смержить PR #3');
+    const items = await store.loadItems();
+    expect(items.find((i) => i.level === 'request')?.notifiedAt).toEqual(NOW);
+    expect(items.find((i) => i.level === 'note')?.notifiedAt).toBeNull();
+  });
+
   it('one failing message does not stop the others', async () => {
     await store.upsertSession(asking());
     await store.upsertSession(asking({ stateText: 'проверить сборку 78' }));

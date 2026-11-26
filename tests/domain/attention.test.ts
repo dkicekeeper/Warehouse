@@ -185,9 +185,21 @@ describe('pull request items', () => {
     expect(kinds({ sessions: [s], prs: [pr()] })).toEqual(['pr_ready']);
   });
 
-  it('once working expires the session goes silent and its PR stays folded into that one item', () => {
+  it('once working expires the PR speaks for itself again, next to the «сессия молчит» note', () => {
     const s = session({ state: 'working', stateText: 'жду CI', reportedAt: minutesAgo(200) });
-    expect(kinds({ sessions: [s], prs: [pr()] })).toEqual(['session_silent']);
+    expect(kinds({ sessions: [s], prs: [pr()] })).toEqual(['session_silent', 'pr_ready']);
+    expect(kinds({ sessions: [s], prs: [pr({ checks: 'failure' })] })).toEqual(['session_silent', 'ci_failed']);
+  });
+
+  it('a note about the session never hides a request about its PR', () => {
+    const noStatus = session({ state: 'unknown', stateText: 'хвост' });
+    expect(kinds({ sessions: [noStatus], prs: [pr()] })).toEqual(['session_unknown', 'pr_ready']);
+    const blocked = session({
+      state: 'done',
+      reportedAt: minutesAgo(30),
+      reconcile: { bucket: 'blocked', unread: false, summary: 'ждёт разрешения', updatedAt: minutesAgo(5) },
+    });
+    expect(kinds({ sessions: [blocked], prs: [pr({ checks: 'failure' })] })).toEqual(['session_reconcile', 'ci_failed']);
   });
 
   it('one item per cause: a needs_owner session suppresses the items of its PR', () => {

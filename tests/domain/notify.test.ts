@@ -178,6 +178,31 @@ describe('planNotifications', () => {
     expect(a?.text.indexOf('смержить PR #3')).toBeLessThan(a?.text.indexOf('без статуса: хвост') ?? -1);
   });
 
+  it('a digest stays under Telegram’s limit: long lines are cut and the overflow is counted', () => {
+    const morning = almaty('08:00', '2026-11-26');
+    const notes = Array.from({ length: 60 }, (_, i) =>
+      item({ id: `n${i}`, key: `session:n${i}`, level: 'note', kind: 'session_reconcile', text: `заметка ${i} ` + 'я'.repeat(590) }),
+    );
+    const [a] = plan(notes, morning).actions;
+    expect(a?.type).toBe('send');
+    expect(a?.text.length).toBeLessThanOrEqual(3900);
+    expect(a?.text).toMatch(/и ещё \d+ — на панели/);
+    expect(a?.text).toContain('Открыть панель');
+    // Every item is covered by the digest, shown or not.
+    expect(a?.type === 'send' && a.itemIds).toHaveLength(60);
+    const firstLine = a?.text.split('\n').find((l) => l.startsWith('•')) ?? '';
+    expect(firstLine.length).toBeLessThanOrEqual(260);
+    expect(firstLine.endsWith('…')).toBe(true);
+  });
+
+  it('a digest names the requests it carries, so they can be sent alone if it fails', () => {
+    const morning = almaty('08:00', '2026-11-26');
+    const req = item({ id: 'r', firstSeenAt: minutesAgo(300, morning) });
+    const note = item({ id: 'n', key: 'session:n', level: 'note', kind: 'session_unknown' });
+    const [a] = plan([req, note], morning).actions;
+    expect(a).toMatchObject({ digest: true, fallback: [{ itemId: 'r', text: formatItem(req, 'Tenra', BASE) }] });
+  });
+
   it('once the digest is recorded, the same morning sends nothing more for those items', () => {
     const morning = almaty('08:01', '2026-11-26');
     const cfg = { ...CFG, lastDigestAt: almaty('08:00', '2026-11-26') };

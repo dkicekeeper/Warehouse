@@ -12,6 +12,15 @@ describe('parseStatusLine', () => {
     ['Status: needs owner — two words', 'needs_owner', 'two words'],
     ['Status: done — shipped', 'done', 'shipped'],
     ['Status: working — waiting for CI', 'working', 'waiting for CI'],
+    ['**Статус:** ждёт владельца — смержить PR #3', 'needs_owner', 'смержить PR #3'],
+    ['Статус: **ждёт владельца** — смержить PR #3', 'needs_owner', 'смержить PR #3'],
+    ['_Статус:_ `работаю` — жду CI', 'working', 'жду CI'],
+    ['Статус: ждёт владельца: смержить PR #3', 'needs_owner', 'смержить PR #3'],
+    ['Статус: готово, PR #3 смержен', 'done', 'PR #3 смержен'],
+    ['Статус: готово.', 'done', ''],
+    ['Статус: работаю (жду CI)', 'working', 'жду CI'],
+    ['Статус: готово — всё сделано.', 'done', 'всё сделано.'],
+    ['Статус — ждёт владельца — решить', 'needs_owner', 'решить'],
   ])('parses %j', (msg, state, text) => {
     expect(parseStatusLine(msg)).toEqual({ state, text });
   });
@@ -49,6 +58,12 @@ describe('parseStatusLine', () => {
 
   it('treats an unrecognised state word as unknown', () => {
     expect(parseStatusLine('Статус: думаю — хм').state).toBe('unknown');
+  });
+
+  it('a state word that merely starts a longer word is not a state', () => {
+    expect(parseStatusLine('Статус: готовое решение есть').state).toBe('unknown');
+    expect(parseStatusLine('Status: donezo').state).toBe('unknown');
+    expect(parseStatusLine('Статус: работаю над этим дальше').state).toBe('unknown');
   });
 
   it('does not mistake prose mentioning the word for a status line', () => {

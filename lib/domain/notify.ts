@@ -8,7 +8,14 @@ const MINUTE = 60_000;
 const HELD: ReadonlySet<ItemKind> = new Set(['pr_ready', 'ci_failed']);
 
 export type NotifyAction =
-  | { type: 'send'; itemIds: string[]; text: string; digest: boolean }
+  | {
+      type: 'send';
+      itemIds: string[];
+      text: string;
+      digest: boolean;
+      /** Digest only: the requests it carries, each as the message to send if the digest fails. */
+      fallback?: { itemId: string; text: string }[];
+    }
   | { type: 'edit'; itemId: string; messageId: number; text: string };
 
 export interface NotifyPlan {
@@ -72,15 +79,37 @@ export function formatItem(item: StoredItem, projectName: string, baseUrl: strin
   return `<b>${esc(projectName)}</b> · ${esc(item.text)}\n${links(item, baseUrl)}`;
 }
 
+/** Telegram refuses messages over 4096 characters; stay clear of it. */
+const DIGEST_MAX_CHARS = 3800;
+const DIGEST_LINE_CHARS = 200;
+
 function formatDigest(requests: StoredItem[], notes: StoredItem[], nameOf: (i: StoredItem) => string, baseUrl: string): string {
-  const line = (i: StoredItem) => `• <b>${esc(nameOf(i))}</b> · ${esc(i.text)}`;
+  const cut = (t: string) => (t.length > DIGEST_LINE_CHARS ? `${t.slice(0, DIGEST_LINE_CHARS - 1)}…` : t);
+  const line = (i: StoredItem) => `• <b>${esc(nameOf(i))}</b> · ${esc(cut(i.text))}`;
+  const footer = `\n<a href="${baseUrl}">Открыть панель</a>`;
+  const more = (n: number) => `…и ещё ${n} — на панели`;
   const parts: string[] = [];
-  if (requests.length > 0) parts.push(`<b>Ждёт вас: ${requests.length}</b>`, ...requests.map(line));
-  if (notes.length > 0) {
-    if (parts.length > 0) parts.push('');
-    parts.push(`<b>Заметки: ${notes.length}</b>`, ...notes.map(line));
-  }
-  parts.push('', `<a href="${baseUrl}">Открыть панель</a>`);
+  let size = footer.length + more(999).length + 2;
+  let hidden = 0;
+  const add = (text: string): boolean => {
+    if (size + text.length + 1 > DIGEST_MAX_CHARS) return false;
+    parts.push(text);
+    size += text.length + 1;
+    return true;
+  };
+  const section = (title: string, items: StoredItem[]) => {
+    if (items.length === 0) return;
+    if (parts.length > 0) add('');
+    if (!add(`<b>${title}: ${items.length}</b>`)) {
+      hidden += items.length;
+      return;
+    }
+    for (const i of items) if (hidden > 0 || !add(line(i))) hidden++;
+  };
+  section('Ждёт вас', requests);
+  section('Заметки', notes);
+  if (hidden > 0) parts.push(more(hidden));
+  parts.push(footer);
   return parts.join('\n');
 }
 
@@ -119,6 +148,7 @@ export function planNotifications(
         itemIds: [...due, ...notes].map((i) => i.id),
         text: formatDigest(due, notes, nameOf, baseUrl),
         digest: true,
+        fallback: due.map((i) => ({ itemId: i.id, text: formatItem(i, nameOf(i), baseUrl) })),
       });
     }
     return { actions, digestDue: true };

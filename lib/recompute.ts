@@ -50,17 +50,35 @@ export async function recompute(
       continue;
     }
     if (!(await store.claimNotify(action.itemIds, now))) continue;
-    try {
-      const { messageId } = await notifier.send(chatId, action.text);
-      const texts = Object.fromEntries(action.itemIds.map((id) => [id, action.text]));
-      // A digest is one message for many items; none of them owns it, so none can be edited later.
-      await store.markNotified(action.itemIds, now, action.digest ? null : messageId, texts);
+    const delivered = await deliver(action.itemIds, action.text, action.digest);
+    if (delivered) {
       if (action.digest) digestDelivered = true;
-      result.sent++;
-    } catch {
-      await store.releaseNotify(action.itemIds).catch(() => {});
-      result.failed++;
+      continue;
     }
+    // A digest that Telegram refuses must not take the requests down with it.
+    for (const single of action.fallback ?? []) {
+      if (await store.claimNotify([single.itemId], now)) await deliver([single.itemId], single.text, false);
+    }
+  }
+
+  /** Sends one message and records it. False only when Telegram did not take the message. */
+  async function deliver(itemIds: string[], text: string, digest: boolean): Promise<boolean> {
+    let messageId: number;
+    try {
+      ({ messageId } = await notifier.send(chatId as string, text));
+    } catch {
+      await store.releaseNotify(itemIds).catch(() => {});
+      result.failed++;
+      return false;
+    }
+    result.sent++;
+    const texts = Object.fromEntries(itemIds.map((id) => [id, text]));
+    // A digest is one message for many items; none of them owns it, so none can be edited later.
+    const record = () => store.markNotified(itemIds, now, digest ? null : messageId, texts);
+    // The message is out. If recording it fails, the claim stays: better a late record than a
+    // second copy of the same message every minute.
+    await record().catch(() => record().catch(() => {}));
+    return true;
   }
 
   if (plan.digestDue && digestDelivered) await store.patchSettings({ lastDigestAt: now });

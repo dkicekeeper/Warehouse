@@ -48,21 +48,23 @@ export function isWorking(s: Session, runs: Run[], now: Date, cfg: Settings): bo
 export function computeAttention(snap: Snapshot, now: Date, cfg: Settings): DesiredItem[] {
   const repoByName = new Map(snap.repos.map((r) => [r.fullName, r]));
   const items: DesiredItem[] = [];
-  const sessionsWithItem = new Set<string>();
+  const asking = new Set<string>();
 
   for (const s of snap.sessions) {
     const item = sessionItem(s, snap.runs, now, cfg, repoByName);
     if (item) {
       items.push(item);
-      sessionsWithItem.add(s.id);
+      if (item.kind === 'session_needs_owner') asking.add(s.id);
     }
   }
 
   for (const p of snap.prs) {
     if (p.state !== 'open' || p.draft) continue;
     const own = snap.sessions.filter((s) => isSessionOfPr(s, p));
-    // One item per cause: the session already speaks for this PR.
-    if (own.some((s) => sessionsWithItem.has(s.id))) continue;
+    // One item per cause: a session that asked for the owner already speaks for its PR.
+    // A mere note about the session (silent, no status, stuck) must not hide the PR's own request:
+    // a session that said "жду CI" and never came back is exactly when "готов к мержу" matters.
+    if (own.some((s) => asking.has(s.id))) continue;
     if (own.some((s) => isWorking(s, snap.runs, now, cfg))) continue;
     const item = prItem(p, repoByName);
     if (item) items.push(item);

@@ -97,6 +97,24 @@ describe('resync', () => {
     expect(await store.getPr(REPO, 3)).toMatchObject({ state: 'open', mergeable: true, sessionId: 'session_016AbC' });
   });
 
+  it('learns the checks of a PR whose runs finished days ago, by asking for the runs of its head commit', async () => {
+    routes[`GET /repos/${REPO}/actions/runs`] = (call) =>
+      call.path.includes('head_sha=aaa111')
+        ? {
+            workflow_runs: [
+              {
+                id: 8001, name: 'iOS', head_branch: 'claude/infotip-a1', head_sha: 'aaa111', event: 'push',
+                status: 'completed', conclusion: 'success',
+                created_at: minutesAgo(9 * 1440).toISOString(), run_started_at: minutesAgo(9 * 1440).toISOString(),
+                updated_at: minutesAgo(9 * 1440 - 30).toISOString(),
+              },
+            ],
+          }
+        : { workflow_runs: [] };
+    await app().resync(store, NOW);
+    expect((await store.getPr(REPO, 3))?.checks).toBe('success');
+  });
+
   it('does not ask for commits again once the session is known', async () => {
     const a = app();
     await a.resync(store, NOW);
@@ -137,7 +155,7 @@ describe('resync', () => {
     expect((await store.getRun(9002))?.status).toBe('in_progress');
     expect(await store.getJob(7002)).toMatchObject({ status: 'in_progress', labels: ['xcode-27'] });
     expect((await store.getPr(REPO, 3))?.checks).toBe('pending');
-    const listed = calls.find((c) => c.path.startsWith(`/repos/${REPO}/actions/runs?`));
+    const listed = calls.find((c) => c.path.startsWith(`/repos/${REPO}/actions/runs?`) && c.path.includes('created='));
     expect(decodeURIComponent(listed?.path ?? '')).toContain(`created=>=${minutesAgo(1440).toISOString()}`);
     expect(calls.some((c) => c.path.includes('/runs/9001/jobs'))).toBe(false);
   });

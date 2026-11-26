@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DesiredItem } from '@/lib/domain/attention';
 import { DEFAULT_SETTINGS } from '@/lib/domain/types';
-import type { PgStore } from '@/lib/store/pg';
+import type { PgStore, Sql } from '@/lib/store/pg';
 import { testStore } from '../helpers/db';
 import { NOW, job, minutesAgo, minutesFromNow, pr, run, session } from '../helpers/factories';
 
 let store: PgStore;
+let sql: Sql;
 let close: () => Promise<void>;
 beforeEach(async () => {
-  ({ store, close } = await testStore());
+  ({ store, sql, close } = await testStore());
 });
 afterEach(() => close());
 
@@ -259,6 +260,14 @@ describe('sources and events', () => {
     ]);
     await store.touchSource('github_webhook', NOW, true);
     expect((await store.getSources())[0]).toMatchObject({ lastOkAt: NOW, lastErrorAt: minutesAgo(5), note: null });
+  });
+
+  it('stores the payload as JSON, not as a string that contains JSON', async () => {
+    await store.recordEvent('github_webhook', 'd7', { action: 'opened', n: 3 }, NOW);
+    const [row] = await sql.query<{ kind: string; action: string }>(
+      `select jsonb_typeof(payload) as kind, payload->>'action' as action from events where delivery_id = 'd7'`,
+    );
+    expect(row).toEqual({ kind: 'object', action: 'opened' });
   });
 
   it('tells a new delivery from a repeated one, and prunes old ones', async () => {

@@ -59,6 +59,8 @@ export function reconcileItems(existing: StoredItem[], desired: DesiredItem[], n
     if (d.text !== item.text) patch.text = d.text;
     if (d.kind !== item.kind) patch.kind = d.kind;
     if (d.level !== item.level) patch.level = d.level;
+    // A note that turns into a request is news, even if the note itself was already delivered.
+    if (item.level === 'note' && d.level === 'request') patch.notifiedAt = null;
     if (d.projectId !== item.projectId) patch.projectId = d.projectId;
     if (d.sessionId !== item.sessionId) patch.sessionId = d.sessionId;
     if (Object.keys(patch).length > 0) changes.update.push({ id: item.id, patch });
