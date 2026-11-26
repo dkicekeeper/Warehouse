@@ -1,0 +1,127 @@
+# Развёртывание диспетчерской
+
+Что нужно сделать один раз, чтобы сервис заработал. У каждого шага указано, кто его делает:
+**владелец** — действия в кабинетах, которые нельзя сделать из сессии; **Claude** — остальное.
+
+Секреты не записываются в репозиторий и не вставляются в чат: только в переменные Vercel,
+в секреты Actions репозитория и в сетевые секреты окружений Claude.
+
+Из чего состоит сервис: приложение на Vercel, база Postgres в Neon (бесплатный план), одно
+приложение GitHub (и данные, и вход), бот Telegram. Supabase не используется: на бесплатном плане
+у владельца заняты оба проекта.
+
+## 1. Код в `main` (владелец мержит)
+
+Vercel разворачивает ветку `main`. PR из рабочей ветки открывает Claude по просьбе владельца.
+
+## 2. База (владелец)
+
+1. Завести аккаунт на neon.tech, создать проект `warehouse` (регион поближе к Vercel, например
+   Frankfurt).
+2. Скопировать строку подключения **с пулером** (в ней хост вида `…-pooler.…neon.tech`) —
+   это `DATABASE_URL`.
+
+Таблицы создаёт сам сервис при первом тике (шаг 7): миграции лежат в коде
+(`lib/store/migrations.ts`).
+
+## 3. Сервис (Claude создаёт проект, владелец вставляет секреты)
+
+Проект Vercel из репозитория `dkicekeeper/Warehouse`. После создания известен адрес сервиса —
+дальше `<адрес>`.
+
+Переменные окружения (Production), имена — как в `.env.example`:
+
+| Переменная | Откуда | Кто |
+|---|---|---|
+| `PUBLIC_BASE_URL` | `<адрес>` без завершающего `/` | Claude |
+| `OWNER_GITHUB_ID` | `11180079` (числовой id аккаунта `dkicekeeper`) | Claude |
+| `NEXT_PUBLIC_TELEGRAM_BOT` | имя бота без `@` (шаг 5) | Claude |
+| `DATABASE_URL` | шаг 2 | владелец |
+| `SESSION_SECRET`, `REPORT_TOKEN`, `CRON_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `GITHUB_WEBHOOK_SECRET` | пять случайных строк: `openssl rand -hex 32` | владелец |
+| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` | шаг 4 | владелец |
+| `TELEGRAM_BOT_TOKEN` | шаг 5 | владелец |
+
+`GITHUB_APP_PRIVATE_KEY` — содержимое файла `.pem` целиком. После вставки — Redeploy.
+
+## 4. Приложение GitHub (владелец)
+
+Одно приложение и собирает данные, и впускает владельца. Settings → Developer settings →
+GitHub Apps → New GitHub App:
+
+- **Homepage URL:** `<адрес>`
+- **Callback URL:** `<адрес>/auth/callback`
+- **Request user authorization (OAuth) during installation:** выключено
+- **Webhook URL:** `<адрес>/api/github/webhook`; **Webhook secret:** значение `GITHUB_WEBHOOK_SECRET`
+- **Repository permissions:** Actions — Read and write (запись нужна только для отмены сборки);
+  Pull requests — Read-only; Contents — Read-only (коммиты PR, чтобы найти сессию);
+  Metadata — Read-only
+- **Account permissions:** никаких (для входа достаточно публичного id аккаунта)
+- **Subscribe to events:** Pull request, Push, Workflow run, Workflow job
+- **Where can this app be installed:** Only on this account
+
+После создания: записать **App ID** и **Client ID**, сгенерировать **Client secret** и
+**Private key** (скачается `.pem`). Install App → репозитории Warehouse, Tenra, tenra-assets,
+Dalada, Platina, DesignKit, AutoParts4x4.
+
+## 5. Telegram (владелец)
+
+1. В `@BotFather`: `/newbot` → имя бота и токен.
+2. Привязать вебхук:
+
+   ```bash
+   curl "https://api.telegram.org/bot<ТОКЕН_БОТА>/setWebhook" \
+     --data-urlencode "url=<адрес>/api/telegram/webhook" \
+     --data-urlencode "secret_token=<TELEGRAM_WEBHOOK_SECRET>" \
+     --data-urlencode 'allowed_updates=["message"]'
+   ```
+
+## 6. Сессии Claude
+
+1. **Адрес сервиса в хуке (Claude):** вписать его в `DEFAULT_URL` в `hooks/warehouse-report.py`.
+   Пока он пуст, хук ничего не отправляет.
+2. **Сетевой секрет (Claude вызывает форму, владелец вставляет `REPORT_TOKEN`):** в каждом
+   окружении Claude Code, где идут сессии проектов (как минимум Default и Tenra), — для хоста
+   сервиса: заголовок `Authorization`, префикс `Bearer`.
+3. **Локальные сессии на Mac (владелец):** `export WAREHOUSE_REPORT_TOKEN=…` в `~/.zshrc`.
+4. **Часовая сверка (Claude):** плановая задача с текстом из `ops/reconcile-prompt.md`.
+5. **Хук в репозиториях проектов (Claude; мерж — владелец):** по одному PR, как в
+   `hooks/README.md`: Platina → DesignKit → Dalada → AutoParts4x4 → Tenra.
+
+## 7. Тик (владелец добавляет два секрета)
+
+Сервис будит workflow `.github/workflows/tick.yml`, раз в 5 минут на `ubuntu-latest`.
+В репозитории Warehouse → Settings → Secrets and variables → Actions добавить:
+
+- `WAREHOUSE_URL` — `<адрес>`
+- `CRON_TOKEN` — то же значение, что в Vercel
+
+Затем Actions → Tick → Run workflow. Первый запуск создаёт таблицы. Проверка: страница
+`<адрес>/settings` показывает «Сверка с GitHub: успешно … назад».
+
+Следствия пятиминутного тика: сообщение в Telegram о просьбе сессии и о красном `main` уходит
+сразу (его шлёт сам приём события), а «готов к мержу», «CI упал», утренняя сводка и «сессия
+молчит» опаздывают до 5 минут. GitHub отключает расписание в репозитории, где 60 дней не было
+коммитов; тогда на странице появится предупреждение «GitHub не сверялся больше часа».
+
+## 8. Первый вход и приёмка (§6 спецификации)
+
+1. Открыть `<адрес>` с телефона, войти через GitHub; в «Настройки» → «Получить код привязки» →
+   отправить боту `/start <код>`.
+2. Сессия в Warehouse заканчивает ход строкой `Статус: ждёт владельца — …` → пункт на странице и
+   сообщение в Telegram в пределах минуты.
+3. Пуш в рабочую ветку DesignKit или Platina → строка в очереди в пределах минуты, с веткой и
+   сессией; после завершения сборки исчезает.
+4. Второй пуш в ту же ветку Tenra → первый прогон помечен «устарел», кнопка его отменяет.
+5. Мерж PR убирает «готов к мержу» без действий на странице.
+6. Временно сменить секрет вебхука в приложении GitHub → предупреждение на главной не позже чем
+   через час; вернуть.
+7. `curl` без входа на `/`, `/api/board`, `/api/items/x` и на приёмники без подписи и токена —
+   ни одного байта данных (это же проверяет `pnpm test:e2e`).
+
+## Что не покрыто тестами до развёртывания
+
+- Подключение к Neon через пулер (SQL и миграции проверены на настоящем Postgres 16 через тот
+  же драйвер и в CI, но не на Neon).
+- Вход через настоящий GitHub: обмен кода и чтение пользователя проверены на подставном GitHub.
+- Хук в настоящей облачной сессии: что события несут ожидаемые поля, а прокси окружения
+  подставляет токен. Проверяется шагом 8.2.
