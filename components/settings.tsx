@@ -4,6 +4,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { duration } from './format';
+import { Notice, Page, link } from './page';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { NativeSelect, NativeSelectOption } from './ui/native-select';
+import { Skeleton } from './ui/skeleton';
 
 interface SettingsView {
   settings: {
@@ -30,8 +36,6 @@ const SOURCES: Record<string, string> = {
 
 const BOT = process.env.NEXT_PUBLIC_TELEGRAM_BOT ?? '';
 
-const input = 'min-h-9 rounded border border-line bg-paper px-2 text-sm text-ink';
-const button = 'min-h-9 rounded border border-line bg-paper px-3 text-sm hover:border-muted disabled:opacity-50';
 
 export function Settings() {
   const router = useRouter();
@@ -72,30 +76,30 @@ export function Settings() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl px-4 pb-16 pt-4">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-lg font-semibold">Настройки</h1>
-        <Link href="/" className="text-xs">
+    <Page
+      title="Настройки"
+      aside={
+        <Link href="/" className={link}>
           ← к панели
         </Link>
-      </header>
+      }
+    >
       {message && (
-        <p role="status" className="mt-3 rounded-md border border-line bg-panel px-3 py-2 text-sm">
-          {message}
-        </p>
+        <Notice tone="info">{message}</Notice>
       )}
+      {!view && <Skeleton className="h-40 w-full rounded-xl" />}
       {view && (
         <>
           <Rules view={view} send={send} />
           <Telegram view={view} send={send} />
           <ProjectsBlock view={view} send={send} />
           <Sources view={view} />
-          <form action="/auth/signout" method="post" className="mt-8">
-            <button className={button}>Выйти</button>
+          <form action="/auth/signout" method="post">
+            <Button type="submit" variant="outline">Выйти</Button>
           </form>
         </>
       )}
-    </div>
+    </Page>
   );
 }
 
@@ -103,10 +107,14 @@ type Send = (body: unknown, done?: string) => Promise<void>;
 
 function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="mt-6">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>
-      <div className="space-y-3 rounded-lg border border-line bg-panel p-3 text-sm">{children}</div>
-    </section>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>
+          <h2 className="text-sm font-medium">{title}</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 text-sm">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -137,28 +145,28 @@ function Rules({ view, send }: { view: SettingsView; send: Send }) {
       <form onSubmit={save} className="space-y-3">
         <label className="flex flex-wrap items-center gap-2">
           <span className="min-w-56 flex-1">Сколько верить «работаю» без новостей, мин</span>
-          <input className={`${input} w-24`} inputMode="numeric" value={ttl} onChange={(e) => setTtl(e.target.value)} />
+          <Input className="w-24" inputMode="numeric" value={ttl} onChange={(e) => setTtl(e.target.value)} />
         </label>
         <label className="flex flex-wrap items-center gap-2">
           <span className="min-w-56 flex-1">Задержка перед «готов к мержу» и «CI упал» в Telegram, мин</span>
-          <input className={`${input} w-24`} inputMode="numeric" value={delay} onChange={(e) => setDelay(e.target.value)} />
+          <Input className="w-24" inputMode="numeric" value={delay} onChange={(e) => setDelay(e.target.value)} />
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <span className="min-w-56 flex-1">Тихие часы ({s.timezone})</span>
-          <input aria-label="Начало тихих часов" type="time" className={input} value={start} onChange={(e) => setStart(e.target.value)} />
+          <Input aria-label="Начало тихих часов" type="time" className="w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
           <span>—</span>
-          <input aria-label="Конец тихих часов" type="time" className={input} value={end} onChange={(e) => setEnd(e.target.value)} />
+          <Input aria-label="Конец тихих часов" type="time" className="w-auto" value={end} onChange={(e) => setEnd(e.target.value)} />
         </div>
         <label className="flex flex-wrap items-center gap-2">
           <span className="min-w-56 flex-1">
             Одновременных сборок macOS
-            <span className="block text-xs text-muted">
+            <span className="block text-xs text-muted-foreground">
               Пусто — брать наблюдаемое: {s.observedMacosLimit ?? 'пока не известно'}
             </span>
           </span>
-          <input className={`${input} w-24`} inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="авто" />
+          <Input className="w-24" inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="авто" />
         </label>
-        <button className={button}>Сохранить</button>
+        <Button type="submit" className="self-start">Сохранить</Button>
       </form>
     </Block>
   );
@@ -170,9 +178,9 @@ function Telegram({ view, send }: { view: SettingsView; send: Send }) {
     <Block title="Telegram">
       <p>{view.telegram.bound ? 'Чат привязан: уведомления приходят.' : 'Чат не привязан: уведомления не уходят.'}</p>
       {code && (
-        <p className="rounded bg-paper p-2">
+        <p className="rounded bg-background p-2">
           Отправьте боту{BOT ? ` @${BOT}` : ''} сообщение <code className="font-mono font-semibold">/start {code.code}</code>
-          <span className="block text-xs text-muted">Код одноразовый, действует 15 минут.</span>
+          <span className="block text-xs text-muted-foreground">Код одноразовый, действует 15 минут.</span>
           {BOT && (
             <a className="mt-1 block" href={`https://t.me/${BOT}?start=${code.code}`} target="_blank" rel="noreferrer">
               Открыть бота с этим кодом
@@ -181,13 +189,13 @@ function Telegram({ view, send }: { view: SettingsView; send: Send }) {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <button className={button} onClick={() => send({ action: 'linkTelegram' }, 'Код создан.')}>
+        <Button variant="outline" size="sm" onClick={() => send({ action: 'linkTelegram' }, 'Код создан.')}>
           {view.telegram.bound ? 'Привязать другой чат' : 'Получить код привязки'}
-        </button>
+        </Button>
         {view.telegram.bound && (
-          <button className={button} onClick={() => send({ action: 'unlinkTelegram' }, 'Чат отвязан.')}>
+          <Button variant="outline" size="sm" onClick={() => send({ action: 'unlinkTelegram' }, 'Чат отвязан.')}>
             Отвязать
-          </button>
+          </Button>
         )}
       </div>
     </Block>
@@ -197,28 +205,28 @@ function Telegram({ view, send }: { view: SettingsView; send: Send }) {
 function ProjectsBlock({ view, send }: { view: SettingsView; send: Send }) {
   return (
     <Block title="Проекты и репозитории">
-      {view.projects.length === 0 && <p className="text-muted">Появятся, когда приложение GitHub сообщит о репозиториях.</p>}
+      {view.projects.length === 0 && <p className="text-muted-foreground">Появятся, когда приложение GitHub сообщит о репозиториях.</p>}
       {view.projects.map((p) => (
         <ProjectRow key={p.id} project={p} all={view.projects} send={send} />
       ))}
       {view.looseSessions.length > 0 && (
-        <div className="border-t border-line pt-3">
-          <p className="mb-2 text-xs text-muted">Сессии без проекта</p>
+        <div className="border-t border-border pt-3">
+          <p className="mb-2 text-xs text-muted-foreground">Сессии без проекта</p>
           {view.looseSessions.map((s) => (
             <label key={s.id} className="mb-2 flex flex-wrap items-center gap-2">
               <span className="min-w-40 flex-1 break-words">{s.title ?? s.id}</span>
-              <select
-                className={input}
+              <NativeSelect
+                size="sm"
                 defaultValue=""
                 onChange={(e) => e.target.value && send({ action: 'assignSession', sessionId: s.id, projectId: e.target.value })}
               >
-                <option value="">проект…</option>
+                <NativeSelectOption value="">проект…</NativeSelectOption>
                 {view.projects.map((p) => (
-                  <option key={p.id} value={p.id}>
+                  <NativeSelectOption key={p.id} value={p.id}>
                     {p.name}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           ))}
         </div>
@@ -247,28 +255,28 @@ function ProjectRow({
           void send({ action: 'renameProject', projectId: project.id, name });
         }}
       >
-        <input aria-label={`Название проекта ${project.name}`} className={`${input} min-w-40 flex-1`} value={name} onChange={(e) => setName(e.target.value)} />
-        <button className={button} disabled={name.trim() === '' || name === project.name}>
+        <Input aria-label={`Название проекта ${project.name}`} className="min-w-40 flex-1" value={name} onChange={(e) => setName(e.target.value)} />
+        <Button type="submit" variant="outline" size="sm" disabled={name.trim() === '' || name === project.name}>
           Переименовать
-        </button>
+        </Button>
       </form>
       {project.repos.map((r) => (
-        <div key={r} className="flex flex-wrap items-center gap-2 pl-2 text-xs text-muted">
+        <div key={r} className="flex flex-wrap items-center gap-2 pl-2 text-xs text-muted-foreground">
           <span className="min-w-40 flex-1 break-all">{r}</span>
           {others.length > 0 && (
-            <select
+            <NativeSelect
               aria-label={`Перенести ${r} в другой проект`}
-              className={`${input} text-xs`}
+              size="sm"
               defaultValue=""
               onChange={(e) => e.target.value && send({ action: 'moveRepo', repo: r, projectId: e.target.value })}
             >
-              <option value="">перенести в…</option>
+              <NativeSelectOption value="">перенести в…</NativeSelectOption>
               {others.map((p) => (
-                <option key={p.id} value={p.id}>
+                <NativeSelectOption key={p.id} value={p.id}>
                   {p.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           )}
         </div>
       ))}
@@ -287,7 +295,7 @@ function Sources({ view }: { view: SettingsView }) {
         return (
           <div key={key} className="flex flex-wrap items-baseline justify-between gap-x-3">
             <span>{label}</span>
-            <span className={`text-xs ${failing ? 'text-bad' : 'text-muted'}`}>
+            <span className={`text-xs ${failing ? 'text-destructive' : 'text-muted-foreground'}`}>
               {failing ? `ошибка ${ago(s?.lastErrorAt ?? null)}${s?.note ? `: ${s.note}` : ''}` : `успешно ${ago(s?.lastOkAt ?? null)}`}
             </span>
           </div>
