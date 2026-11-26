@@ -2,7 +2,7 @@ import type { DesiredItem } from '@/lib/domain/attention';
 import type { ItemChanges, ItemPatch, StoredItem } from '@/lib/domain/items';
 import type { Job, Project, PullRequest, Repo, Run, Session, Settings, Snapshot } from '@/lib/domain/types';
 
-export type SourceName = 'github_webhook' | 'github_resync' | 'session_hook' | 'reconcile';
+export type SourceName = 'github_webhook' | 'github_resync' | 'session_hook' | 'reconcile' | 'heartbeat';
 
 export interface SourceHealth {
   source: SourceName;

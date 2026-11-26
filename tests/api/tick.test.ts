@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { handleTick } from '@/lib/api/tick';
+import { handleTick, tickIfDue } from '@/lib/api/tick';
 import type { GithubApp } from '@/lib/github/app';
 import type { PgStore } from '@/lib/store/pg';
 import { testStore } from '../helpers/db';
@@ -160,5 +160,58 @@ describe('tick', () => {
     await tick();
     expect((await store.getSession('session_x'))?.projectId).toBe(repo.projectId);
     expect(await store.recordEvent('github_webhook', 'old', {}, NOW)).toBe('new');
+  });
+});
+
+describe('heartbeat: the tick that rides on ordinary traffic', () => {
+  const beat = (now = NOW) =>
+    tickIfDue({
+      store,
+      now,
+      github,
+      migrate: async () => migrations,
+      recompute: async () => {
+        log.push('recompute');
+        return { sent: 0, edited: 0, failed: 0 };
+      },
+    });
+
+  it('runs a full tick when none has run for a minute', async () => {
+    expect(await beat()).toBe(true);
+    expect(log).toEqual(['resync', 'recompute']);
+  });
+
+  it('does nothing within a minute of the last one, however many requests arrive', async () => {
+    await beat();
+    log = [];
+    expect(await beat(new Date(NOW.getTime() + 20_000))).toBe(false);
+    expect(await beat(new Date(NOW.getTime() + 59_000))).toBe(false);
+    expect(log).toEqual([]);
+    expect(await beat(new Date(NOW.getTime() + 61_000))).toBe(true);
+    expect(log).toEqual(['recompute']);
+  });
+
+  it('a scheduled tick counts as a heartbeat too', async () => {
+    await tick();
+    log = [];
+    expect(await beat(new Date(NOW.getTime() + 30_000))).toBe(false);
+  });
+
+  it('never throws: a failing tick must not break the request it rides on', async () => {
+    const broken = Object.create(store) as PgStore;
+    broken.getSources = async () => {
+      throw new Error('db down');
+    };
+    await expect(
+      tickIfDue({ store: broken, now: NOW, github, migrate: async () => [], recompute: async () => ({ sent: 0, edited: 0, failed: 0 }) }),
+    ).resolves.toBe(false);
+  });
+
+  it('the heartbeat is not shown as a data source of its own', async () => {
+    await beat();
+    const { buildBoardView } = await import('@/lib/domain/board');
+    const snap = await store.loadSnapshot(NOW);
+    const view = buildBoardView(snap, [], { running: 0, waiting: 0, freeSlotInMin: 0, rows: [] }, await store.getSources(), NOW, await store.getSettings());
+    expect(view.warnings).toEqual([]);
   });
 });

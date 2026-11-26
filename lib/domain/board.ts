@@ -238,6 +238,8 @@ function sourceWarnings(sources: SourceReading[], now: Date): string[] {
     out.push(`Хук сессий: ${sessionHook.note ?? 'отчёты не приходят'}`);
   }
   if (lateBy('github_resync', 60)) out.push('GitHub не сверялся больше часа — данные о PR и сборках могут быть устаревшими');
-  if (lateBy('reconcile', 120)) out.push('Сверка сессий не приходила больше двух часов');
+  // The hourly session reconcile is optional (a scheduled Claude session cannot list sessions,
+  // so it is not set up today). Its lateness is news only where it has run before.
+  if (by.get('reconcile')?.lastOkAt && lateBy('reconcile', 120)) out.push('Сверка сессий не приходила больше двух часов');
   return out;
 }
