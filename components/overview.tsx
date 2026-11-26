@@ -1,13 +1,13 @@
 'use client';
 
 import { ChevronRight } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import type { QueueRowView } from '@/lib/domain/board';
 import { buildInbox, kpis, relatedOf, type BoardResponse, type InboxRow, type InboxTab } from '@/lib/domain/overview';
 import { cn } from '@/lib/utils';
 import { useBoardData, useWide, type Act } from './board-data';
-import { approx, duration, plural, taskLabel, typeLabel } from './format';
+import { approx, days, duration, plainText, plural, taskLabel, typeLabel } from './format';
 import { Chip, EmptyRow, Notice, Page, Section, SmallButton, link } from './page';
 import { buttonVariants } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -158,6 +158,9 @@ function Inbox({ board }: { board: BoardResponse }) {
   );
 }
 
+const ageText = (row: InboxRow): string =>
+  row.ageMin !== null ? duration(row.ageMin) : row.ageDays !== null ? days(row.ageDays) : '';
+
 function InboxItem({ row, onOpen }: { row: InboxRow; onOpen: () => void }) {
   return (
     <li data-testid={row.task ? 'owner-task' : 'attention-row'} className={row.level === 'note' ? 'opacity-70' : undefined}>
@@ -170,7 +173,7 @@ function InboxItem({ row, onOpen }: { row: InboxRow; onOpen: () => void }) {
           <Chip>{row.project}</Chip>
           <span className="text-xs text-muted-foreground md:hidden">
             {row.kind}
-            {row.ageMin !== null && ` · ${duration(row.ageMin)}`}
+            {ageText(row) && ` · ${ageText(row)}`}
           </span>
         </span>
         <span className="min-w-0 text-sm">
@@ -185,7 +188,7 @@ function InboxItem({ row, onOpen }: { row: InboxRow; onOpen: () => void }) {
         <span className="hidden md:block">
           <Chip tone={row.level === 'request' ? 'strong' : 'plain'}>{row.kind}</Chip>
         </span>
-        <span className="hidden text-xs tabular-nums text-muted-foreground md:block">{row.ageMin === null ? '' : duration(row.ageMin)}</span>
+        <span className="hidden text-xs tabular-nums text-muted-foreground md:block">{ageText(row)}</span>
         <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
       </button>
     </li>
@@ -217,13 +220,17 @@ const STATE: Record<string, string> = {
 
 function Detail({ board, row, onClose }: { board: BoardResponse; row: InboxRow | null; onClose: () => void }) {
   const wide = useWide();
+  // Focus lands on the top of the panel, so a long panel opens at its title, not scrolled to a button.
+  const top = useRef<HTMLDivElement>(null);
   return (
     <Sheet open={row !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
+        initialFocus={top}
         side={wide ? 'right' : 'bottom'}
         data-testid="detail"
         className={cn('gap-0 overflow-y-auto', wide ? 'w-full sm:max-w-md' : 'max-h-[85dvh] rounded-t-xl')}
       >
+        <div ref={top} tabIndex={-1} className="outline-none" />
         {row?.item && <ItemDetail board={board} row={row} onDone={onClose} />}
         {row?.task && <TaskDetail row={row} />}
       </SheetContent>
@@ -363,7 +370,7 @@ function TaskDetail({ row }: { row: InboxRow }) {
             <p>{t.needsOwner}</p>
           </div>
         )}
-        {t.body && <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{t.body}</p>}
+        {t.body && <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{plainText(t.body)}</p>}
         <p className="text-xs text-muted-foreground">
           {t.updated && `обновлена ${t.updated}`}
           {t.plan && ` · план ${t.plan}`}
@@ -393,8 +400,9 @@ const SLOTS = 5;
 function MacChart({ board }: { board: BoardResponse }) {
   const history = board.macBuilds;
   const { data, config, keys, total, wait } = useMemo(() => {
-    const known = [...new Set([...board.projects.map((p) => p.name), ...(history?.projects ?? [])])].sort((a, b) => a.localeCompare(b));
-    const built = new Set(history?.projects ?? []);
+    // Colours go to the projects that build on macOS, by name: a project keeps its colour from day to day.
+    const known = [...(history?.projects ?? [])].sort((a, b) => a.localeCompare(b));
+    const built = new Set(known);
     const keyOf = (name: string) => {
       const i = known.indexOf(name);
       return i >= 0 && i < SLOTS ? `p${i}` : 'other';
@@ -415,7 +423,7 @@ function MacChart({ board }: { board: BoardResponse }) {
     const total = (history?.days ?? []).reduce((n, d) => n + Object.values(d.minutes).reduce((a, b) => a + b, 0), 0);
     const wait = (history?.days ?? []).reduce((n, d) => n + d.waitMin, 0);
     return { data, config, keys, total, wait };
-  }, [board.projects, history]);
+  }, [history]);
 
   return (
     <Section title="Сборки macOS за 14 дней, минут" aside={total > 0 ? `всего ${hours(total)} · ждали очереди ${hours(wait)}` : undefined}>
@@ -427,7 +435,7 @@ function MacChart({ board }: { board: BoardResponse }) {
             <BarChart data={data} accessibilityLayer margin={{ left: 0, right: 8 }}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={12} />
-              <YAxis tickLine={false} axisLine={false} width={32} />
+              <YAxis tickLine={false} axisLine={false} width={44} />
               <ChartTooltip cursor={{ fill: 'var(--muted)', opacity: 0.5 }} content={<ChartTooltipContent />} />
               <ChartLegend content={<ChartLegendContent />} />
               {keys.map((k, i) => (

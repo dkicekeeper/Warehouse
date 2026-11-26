@@ -55,12 +55,19 @@ describe('the inbox', () => {
 
   it('says what a task needs from the owner and how old it is', () => {
     const row = buildInbox(board, NOW).find((r) => r.tab === 'tasks');
-    expect(row).toMatchObject({ project: 'Dalada', sub: 'Нужно от вас: снять экран карты на телефоне', kind: 'задача', ageMin: 36 * 60 });
+    // A task knows only the day it was updated: its age is in whole days, not minutes.
+    expect(row).toMatchObject({ project: 'Dalada', sub: 'Нужно от вас: снять экран карты на телефоне', kind: 'задача', ageMin: null, ageDays: 1 });
   });
 
-  it('a task without a readable date has no age', () => {
+  it('a task updated today is zero days old, and one without a readable date has no age', () => {
+    const today = buildInbox({ ...board, backlog: { ownerTasks: [task({ updated: '2026-11-26' })], byProject: {} } }, NOW);
+    expect(today.find((r) => r.tab === 'tasks')?.ageDays).toBe(0);
     const rows = buildInbox({ ...board, backlog: { ownerTasks: [task({ updated: 'вчера' })], byProject: {} } }, NOW);
-    expect(rows.find((r) => r.tab === 'tasks')?.ageMin).toBeNull();
+    expect(rows.find((r) => r.tab === 'tasks')?.ageDays).toBeNull();
+  });
+
+  it('a service item carries minutes, not days', () => {
+    expect(buildInbox(board, NOW)[0]).toMatchObject({ ageMin: 540, ageDays: null });
   });
 
   it('works without the backlog part', () => {

@@ -22,7 +22,10 @@ export interface InboxRow {
   title: string;
   sub: string | null;
   kind: string;
+  /** How long a service item has waited, in minutes; null for a task. */
   ageMin: number | null;
+  /** Days since a task's `updated` day; null for a service item or a task without a date. */
+  ageDays: number | null;
   item?: AttentionRow;
   task?: TaskRow;
 }
@@ -39,11 +42,13 @@ export const KIND_LABEL: Record<ItemKind, string> = {
 
 const tabOf = (kind: ItemKind): InboxTab => (kind.startsWith('session_') ? 'sessions' : 'prs');
 
-/** Minutes from a task's `updated` date (a day, read as its midnight UTC) to now; null without one. */
-function ageOfDay(day: string | null, now: Date): number | null {
+/** Whole days from a task's `updated` day to today's (UTC) date; null without a readable day. */
+function daysSince(day: string | null, now: Date): number | null {
   if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
   const at = Date.parse(`${day}T00:00:00Z`);
-  return Number.isNaN(at) ? null : Math.max(0, Math.round((now.getTime() - at) / 60_000));
+  if (Number.isNaN(at)) return null;
+  const today = Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  return Math.max(0, Math.round((today - at) / 86_400_000));
 }
 
 export function buildInbox(board: BoardResponse, now: Date): InboxRow[] {
@@ -56,6 +61,7 @@ export function buildInbox(board: BoardResponse, now: Date): InboxRow[] {
     sub: null,
     kind: KIND_LABEL[a.kind] ?? a.kind,
     ageMin: a.ageMin,
+    ageDays: null,
     item: a,
   }));
   const tasks: InboxRow[] = (board.backlog?.ownerTasks ?? []).map((t) => ({
@@ -66,7 +72,8 @@ export function buildInbox(board: BoardResponse, now: Date): InboxRow[] {
     title: t.title,
     sub: t.needsOwner ? `Нужно от вас: ${t.needsOwner}` : null,
     kind: 'задача',
-    ageMin: ageOfDay(t.updated, now),
+    ageMin: null,
+    ageDays: daysSince(t.updated, now),
     task: t,
   }));
   // Requests first, then the tasks (they wait for days, not minutes), then the notes.
