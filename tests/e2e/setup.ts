@@ -10,8 +10,9 @@ export async function setup() {
   server = spawn('node_modules/.bin/next', ['start', '-p', String(PORT), '-H', '127.0.0.1'], {
     env: {
       ...process.env,
-      NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:9',
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'e2e',
+      // A real-looking secret, so a forged cookie is refused by its signature, not by a missing setting.
+      SESSION_SECRET: 'e2e-'.padEnd(64, 'x'),
+      OWNER_GITHUB_ID: '1',
       // Deliberately no DATABASE_URL and no secrets: nothing here may need them to refuse a stranger.
       DATABASE_URL: '',
     },

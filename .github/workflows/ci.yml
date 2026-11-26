@@ -45,6 +45,3 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       # Builds the app, starts it with no database and no secrets, and drives it in a browser.
       - run: pnpm test:e2e
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder

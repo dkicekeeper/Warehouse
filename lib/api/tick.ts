@@ -9,6 +9,8 @@ export interface TickDeps {
   token: string;
   github: GithubApp | null;
   recompute: () => Promise<RecomputeResult>;
+  /** Brings the database schema up to date; returns the migrations it applied. */
+  migrate: () => Promise<string[]>;
 }
 
 const MINUTE = 60_000;
@@ -25,7 +27,18 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 export async function handleTick(req: Request, deps: TickDeps): Promise<Response> {
   if (!verifyBearer(req, deps.token)) return new Response(null, { status: 401 });
   const { store, now } = deps;
-  const out: { resync: string; recompute: RecomputeResult | string } = { resync: 'skipped', recompute: 'not run' };
+  const out: { migrated?: string[]; resync: string; recompute: RecomputeResult | string } = {
+    resync: 'skipped',
+    recompute: 'not run',
+  };
+
+  // Nothing else can work on a database without its tables, so this comes first and is fatal.
+  try {
+    const applied = await deps.migrate();
+    if (applied.length > 0) out.migrated = applied;
+  } catch (err) {
+    return Response.json({ migrate: message(err) }, { status: 500 });
+  }
 
   if (!deps.github) {
     out.resync = 'not configured';

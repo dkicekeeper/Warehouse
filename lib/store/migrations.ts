@@ -1,4 +1,16 @@
--- Warehouse dispatch board: state kept by the service.
+import type { Sql } from './pg';
+
+/**
+ * The database schema, as ordered migrations. They live in code so that the deployed service can
+ * bring its own database up to date (the minute tick does it) with nothing to run by hand.
+ * A migration is never edited after it has shipped; changes go into a new one.
+ */
+export interface Migration {
+  name: string;
+  sql: string;
+}
+
+const SCHEMA = `-- Warehouse dispatch board: state kept by the service.
 -- Only the server reads and writes these tables, over a direct Postgres connection.
 -- Row level security is on with no policies, so the public (PostgREST) keys see nothing.
 
@@ -144,3 +156,46 @@ alter table items enable row level security;
 alter table settings enable row level security;
 alter table sources enable row level security;
 alter table events enable row level security;
+`;
+
+const SEED_PROJECTS = `-- Projects whose name differs from their repository, or that span several repositories.
+-- Everything else is created on its own, named after the repository, when the GitHub App reports it.
+
+with p as (insert into projects (name) values ('Baja.kz') returning id)
+insert into repos (full_name, project_id) select 'dkicekeeper/AutoParts4x4', id from p
+on conflict (full_name) do nothing;
+
+with p as (insert into projects (name) values ('Tenra') returning id)
+insert into repos (full_name, project_id)
+select r, p.id from p, (values ('dkicekeeper/Tenra'), ('dkicekeeper/tenra-assets')) as t (r)
+on conflict (full_name) do nothing;
+`;
+
+export const MIGRATIONS: Migration[] = [
+  { name: '0001_schema', sql: SCHEMA },
+  { name: '0002_seed_projects', sql: SEED_PROJECTS },
+];
+
+/**
+ * Applies the migrations that have not run yet, each in its own transaction together with the
+ * record that it ran. Returns the names it applied.
+ */
+export async function migrate(sql: Sql, migrations: Migration[] = MIGRATIONS): Promise<string[]> {
+  await sql.exec(
+    'create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())',
+  );
+  const done = new Set((await sql.query<{ name: string }>('select name from schema_migrations')).map((r) => r.name));
+  const applied: string[] = [];
+  for (const m of migrations) {
+    if (done.has(m.name)) continue;
+    if (!/^[\w-]+$/.test(m.name)) throw new Error(`bad migration name: ${m.name}`);
+    try {
+      await sql.exec(`begin;\n${m.sql}\n;insert into schema_migrations (name) values ('${m.name}');\ncommit;`);
+    } catch (err) {
+      await sql.exec('rollback').catch(() => {});
+      throw err;
+    }
+    applied.push(m.name);
+  }
+  return applied;
+}

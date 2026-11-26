@@ -20,6 +20,8 @@ import type { SessionPatch, SourceHealth, SourceName, Store } from './store';
 /** The one thing the store needs from a Postgres driver. */
 export interface Sql {
   query<T = Row>(text: string, params?: unknown[]): Promise<T[]>;
+  /** Runs one or more statements with no parameters and no result (migrations). */
+  exec(text: string): Promise<void>;
 }
 
 type Row = Record<string, unknown>;

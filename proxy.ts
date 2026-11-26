@@ -2,11 +2,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 /**
  * An optimistic check only: no sign-in cookie, no point rendering the shell. The pages themselves
- * are static and carry no data; every byte of data comes from /api, where the cookie is verified
- * against Supabase and the owner's GitHub id.
+ * are static and carry no data; every byte of data comes from /api, where the cookie's signature,
+ * expiry and owner id are verified.
  */
 export function proxy(req: NextRequest) {
-  const signedIn = req.cookies.getAll().some((c) => /^sb-.+-auth-token(\.\d+)?$/.test(c.name));
+  const signedIn = req.cookies.has('wh_session');
   if (signedIn) return NextResponse.next();
   return NextResponse.redirect(new URL('/login', req.url));
 }

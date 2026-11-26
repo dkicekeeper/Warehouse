@@ -29,7 +29,7 @@ async function signedIn(
     deviceScaleFactor: o.scale ?? 1,
     locale: 'ru-RU',
   });
-  await context.addCookies([{ name: 'sb-e2e-auth-token', value: 'x', url: BASE }]);
+  await context.addCookies([{ name: 'wh_session', value: 'x', url: BASE }]);
   const page = await context.newPage();
   const posts: { url: string; body: string | null }[] = [];
   await page.route('**/api/board', (route) => route.fulfill({ json: board }));
@@ -48,7 +48,7 @@ describe('a stranger', () => {
     expect(new URL(page.url()).pathname).toBe('/login');
     const html = await page.content();
     for (const word of ['Tenra', 'Dalada', 'Platina', 'DesignKit', 'Baja']) expect(html).not.toContain(word);
-    expect(await page.getByRole('button', { name: 'Войти через GitHub' }).isVisible()).toBe(true);
+    expect(await page.getByRole('link', { name: 'Войти через GitHub' }).isVisible()).toBe(true);
   });
 
   it('is sent to sign-in from the settings page too', async () => {
@@ -77,7 +77,7 @@ describe('a stranger', () => {
 
   it('a made-up sign-in cookie gets the empty shell and then the sign-in page, never data', async () => {
     context = await browser.newContext();
-    await context.addCookies([{ name: 'sb-e2e-auth-token', value: 'forged', url: BASE }]);
+    await context.addCookies([{ name: 'wh_session', value: 'forged', url: BASE }]);
     const page = await context.newPage();
     const shell = await (await context.request.get(BASE)).text();
     for (const word of ['Tenra', 'Dalada', 'Platina', 'Ждёт вас']) expect(shell).not.toContain(word);

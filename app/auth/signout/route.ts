@@ -1,8 +1,6 @@
-import { NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/auth/server';
+import { handleSignout } from '@/lib/api/auth';
+import { authConfig } from '@/lib/auth/config';
 
-export async function POST(req: Request): Promise<Response> {
-  const supabase = await supabaseServer();
-  await supabase.auth.signOut().catch(() => {});
-  return NextResponse.redirect(new URL('/login', req.url), { status: 303 });
+export async function POST(): Promise<Response> {
+  return handleSignout(authConfig());
 }

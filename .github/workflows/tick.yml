@@ -1,0 +1,36 @@
+name: Tick
+
+# The service's heartbeat: every five minutes it is asked to recompute what waits for the owner,
+# send what is due to Telegram, and re-read GitHub about every quarter of an hour.
+# (Vercel's own schedule cannot run more often than daily on the free plan.)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    # Linux only, a few seconds: this never touches the macOS queue.
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call the service
+        env:
+          WAREHOUSE_URL: ${{ secrets.WAREHOUSE_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          if [ -z "$WAREHOUSE_URL" ] || [ -z "$CRON_TOKEN" ]; then
+            echo "Not configured yet: set the WAREHOUSE_URL and CRON_TOKEN repository secrets."
+            exit 0
+          fi
+          # Only the status code is printed: this repository's logs are public, and the answer can
+          # name private repositories. The details are on the service's settings page.
+          code=$(curl --silent --show-error --max-time 90 --output /dev/null --write-out '%{http_code}' \
+            --request POST --header "Authorization: Bearer $CRON_TOKEN" "$WAREHOUSE_URL/api/cron/tick")
+          echo "HTTP $code"
+          test "$code" = "200"

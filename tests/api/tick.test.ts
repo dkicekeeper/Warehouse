@@ -11,12 +11,14 @@ let log: string[];
 let github: GithubApp;
 let failedDeliveries: number;
 let drift: number;
+let migrations: string[];
 
 beforeEach(async () => {
   ({ store } = await testStore());
   log = [];
   failedDeliveries = 0;
   drift = 0;
+  migrations = [];
   github = {
     resync: async () => {
       log.push('resync');
@@ -37,6 +39,7 @@ const tick = (over: Partial<Parameters<typeof handleTick>[1]> = {}, req = post()
     now: NOW,
     token: TOKEN,
     github,
+    migrate: async () => migrations,
     recompute: async () => {
       log.push('recompute');
       return { sent: 0, edited: 0, failed: 0 };
@@ -51,6 +54,22 @@ describe('tick', () => {
       expect(res.status).toBe(401);
       expect(await res.text()).toBe('');
     }
+    expect(log).toEqual([]);
+  });
+
+  it('applies pending migrations first and reports them', async () => {
+    migrations = ['0001_schema', '0002_seed_projects'];
+    expect(await (await tick()).json()).toMatchObject({ migrated: ['0001_schema', '0002_seed_projects'], resync: 'ok' });
+  });
+
+  it('a failing migration stops the tick with a 500 before anything else runs', async () => {
+    const res = await tick({
+      migrate: async () => {
+        throw new Error('relation "items" already exists');
+      },
+    });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ migrate: 'relation "items" already exists' });
     expect(log).toEqual([]);
   });
 

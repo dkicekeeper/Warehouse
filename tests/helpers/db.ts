@@ -1,9 +1,10 @@
-import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { postgresSql } from '@/lib/store/db';
+import { MIGRATIONS } from '@/lib/store/migrations';
 import { PgStore, type Sql } from '@/lib/store/pg';
 
-const SCHEMA = readFileSync(new URL('../../supabase/migrations/0001_schema.sql', import.meta.url), 'utf8');
+/** The schema alone; tests seed their own projects. */
+const SCHEMA = MIGRATIONS[0]?.sql ?? '';
 
 const TABLES = ['items', 'events', 'sources', 'jobs', 'runs', 'pull_requests', 'sessions', 'repos', 'projects', 'settings'];
 const RESET = `truncate ${TABLES.join(', ')} cascade; insert into settings (id) values (1);`;
@@ -23,7 +24,7 @@ export async function testStore(): Promise<{ store: PgStore; sql: Sql; close: ()
     const url = process.env.TEST_DATABASE_URL;
     if (url) {
       const sql = postgresSql(() => url);
-      const exec = (text: string) => sql.query(text);
+      const exec = (text: string) => sql.exec(text);
       await exec('drop schema if exists public cascade; create schema public;');
       await exec(SCHEMA);
       shared = { sql, exec };
@@ -31,7 +32,12 @@ export async function testStore(): Promise<{ store: PgStore; sql: Sql; close: ()
       const db = new PGlite();
       await db.exec(SCHEMA);
       shared = {
-        sql: { query: async (text, params = []) => (await db.query(text, params)).rows as never },
+        sql: {
+          query: async (text, params = []) => (await db.query(text, params)).rows as never,
+          exec: async (text) => {
+            await db.exec(text);
+          },
+        },
         exec: (text) => db.exec(text),
       };
     }
