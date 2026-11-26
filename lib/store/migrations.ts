@@ -183,6 +183,7 @@ export const MIGRATIONS: Migration[] = [
 ];
 
 const TAG = '$wh_migration$';
+const LOCK = 72031126;
 
 /**
  * Applies the migrations that have not run yet and returns the names this call applied.
@@ -193,9 +194,14 @@ const TAG = '$wh_migration$';
  * (A consequence: a migration is PL/pgSQL statements, so no bare \`select …;\` — use \`perform\`.)
  */
 export async function migrate(sql: Sql, migrations: Migration[] = MIGRATIONS): Promise<string[]> {
+  // Even "create table if not exists" races with itself across connections; take the lock first.
   await sql.exec(
-    `create table if not exists schema_migrations (
-       name text primary key, applied_at timestamptz not null default now(), applied_by text)`,
+    `do ${TAG}
+     begin
+       perform pg_advisory_xact_lock(${LOCK});
+       create table if not exists schema_migrations (
+         name text primary key, applied_at timestamptz not null default now(), applied_by text);
+     end ${TAG};`,
   );
   const done = new Set((await sql.query<{ name: string }>('select name from schema_migrations')).map((r) => r.name));
   const runId = randomUUID();
@@ -205,7 +211,7 @@ export async function migrate(sql: Sql, migrations: Migration[] = MIGRATIONS): P
     await sql.exec(
       `do ${TAG}
        begin
-         perform pg_advisory_xact_lock(72031126);
+         perform pg_advisory_xact_lock(${LOCK});
          if exists (select 1 from schema_migrations where name = '${m.name}') then
            return;
          end if;
