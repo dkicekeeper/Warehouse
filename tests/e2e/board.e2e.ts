@@ -70,6 +70,7 @@ describe('a stranger', () => {
     ['POST', '/api/report/sessions'],
     ['POST', '/api/telegram/webhook'],
     ['POST', '/api/cron/tick'],
+    ['GET', '/api/cron/tick'],
   ])('%s %s answers 401 with not one byte', async (method, path) => {
     const res = await fetch(`${BASE}${path}`, { method, body: method === 'POST' ? '{}' : undefined });
     expect(res.status).toBe(401);

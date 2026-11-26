@@ -26,6 +26,28 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
  */
 export async function handleTick(req: Request, deps: TickDeps): Promise<Response> {
   if (!verifyBearer(req, deps.token)) return new Response(null, { status: 401 });
+  return runTick(deps);
+}
+
+const HEARTBEAT_EVERY_MS = 60_000;
+
+/**
+ * The tick that rides on ordinary traffic. GitHub's schedule is the intended clock, but it starts
+ * late and skips beats, so every webhook, session report and open board also offers the service a
+ * chance to tick — taken at most once a minute. Never throws: it runs after someone else's request.
+ */
+export async function tickIfDue(deps: Omit<TickDeps, 'token'>): Promise<boolean> {
+  try {
+    const beat = (await deps.store.getSources()).find((s) => s.source === 'heartbeat');
+    if (beat?.lastOkAt && deps.now.getTime() - beat.lastOkAt.getTime() < HEARTBEAT_EVERY_MS) return false;
+    await runTick(deps);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function runTick(deps: Omit<TickDeps, 'token'>): Promise<Response> {
   const { store, now } = deps;
   const out: { migrated?: string[]; resync: string; recompute: RecomputeResult | string } = {
     resync: 'skipped',
@@ -39,6 +61,8 @@ export async function handleTick(req: Request, deps: TickDeps): Promise<Response
   } catch (err) {
     return Response.json({ migrate: message(err) }, { status: 500 });
   }
+  // Marked before the work: whoever arrives in the next minute should not start a second one.
+  await store.touchSource('heartbeat', now, true);
 
   if (!deps.github) {
     out.resync = 'not configured';
