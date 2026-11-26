@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -59,11 +59,29 @@ function run(
   });
 }
 
+/**
+ * A repository of the test's own, so nothing depends on how this one happens to be checked out
+ * (CI checks a pull request out with a detached HEAD).
+ */
+function repoOn(branch: string | null): string {
+  const dir = mkdtempSync(join(tmpdir(), 'wh-repo-'));
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  git('remote', 'add', 'origin', 'https://github.com/dkicekeeper/Warehouse.git');
+  git('commit', '-q', '--allow-empty', '-m', 'init');
+  if (branch) git('checkout', '-q', '-b', branch);
+  else git('checkout', '-q', '--detach');
+  return dir;
+}
+
+const REPO_DIR = repoOn('claude/feature-x');
+
 const stop = (over: Record<string, unknown> = {}) =>
   JSON.stringify({
     session_id: '20e570d0-daba-559b-8477-09337c2e3975',
     transcript_path: '/nonexistent.jsonl',
-    cwd: process.cwd(),
+    cwd: REPO_DIR,
     hook_event_name: 'Stop',
     stop_hook_active: false,
     last_assistant_message: 'Собрал и проверил.\n\nСтатус: ждёт владельца — смержить PR #3',
@@ -88,9 +106,9 @@ describe('warehouse-report hook', () => {
     expect(req?.body).toMatchObject({
       session_id: '20e570d0-daba-559b-8477-09337c2e3975',
       repo: 'dkicekeeper/Warehouse',
+      branch: 'claude/feature-x',
       message_tail: 'Собрал и проверил.\n\nСтатус: ждёт владельца — смержить PR #3',
     });
-    expect(typeof req?.body.branch).toBe('string');
   });
 
   it('in a cloud session reports the id the session URL uses', async () => {
@@ -106,7 +124,7 @@ describe('warehouse-report hook', () => {
   it('when the owner sends a message, reports the session as working and never the owner’s words', async () => {
     const event = JSON.stringify({
       session_id: '20e570d0-daba-559b-8477-09337c2e3975',
-      cwd: process.cwd(),
+      cwd: REPO_DIR,
       hook_event_name: 'UserPromptSubmit',
       prompt: 'мой пароль hunter2, смержи',
     });
@@ -152,6 +170,20 @@ describe('warehouse-report hook', () => {
   it('with neither a message nor a readable transcript still reports, with an empty tail', async () => {
     await run(stop({ last_assistant_message: undefined }));
     expect(received[0]?.body.message_tail).toBe('');
+  });
+
+  it('on a detached HEAD reports the repository with no branch', async () => {
+    const dir = repoOn(null);
+    quiet(await run(stop({ cwd: dir }), {}, dir));
+    expect(received[0]?.body).toMatchObject({ repo: 'dkicekeeper/Warehouse', branch: null });
+    expect(SessionReport.safeParse(received[0]?.body).success).toBe(true);
+  });
+
+  it('reads the repository from an ssh remote as well', async () => {
+    const dir = repoOn('main');
+    execFileSync('git', ['remote', 'set-url', 'origin', 'git@github.com:dkicekeeper/Tenra.git'], { cwd: dir });
+    await run(stop({ cwd: dir }), {}, dir);
+    expect(received[0]?.body.repo).toBe('dkicekeeper/Tenra');
   });
 
   it('outside a git repository sends null for repository and branch', async () => {
