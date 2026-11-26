@@ -180,7 +180,7 @@ describe('warehouse-report hook', () => {
   });
 
   it('reads the repository from an ssh remote as well', async () => {
-    const dir = repoOn('main');
+    const dir = repoOn('claude/ssh');
     execFileSync('git', ['remote', 'set-url', 'origin', 'git@github.com:dkicekeeper/Tenra.git'], { cwd: dir });
     await run(stop({ cwd: dir }), {}, dir);
     expect(received[0]?.body.repo).toBe('dkicekeeper/Tenra');
