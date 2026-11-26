@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 kind: plan
 created: 2026-11-26
 updated: 2026-11-26
@@ -161,7 +161,7 @@ export const VALID: Record<string, string>   // минимальное прав�
   - `ready` без раздела «Зачем» или «Готово, когда» → `[dor]`; с `Why` и `Done when` → чисто; `idea` без разделов → чисто; нет заголовка `# ` → `[dor]`;
   - `ready` с ключом `needs-owner` → `[dor]`;
   - `blocked` без `needs-owner` и без строки, начинающейся с «Ждёт:» / `Waiting:` → `[dor]`;
-  - `size: l`, `status: in-progress` без `plan` → `[dor]`;
+  - `size: l`, `status: done` без `plan` → `[dor]`;
   - `plan: plans/nope.md` → `[ref]`; `plan` на файл в `archive/plans/` → чисто; `tasks: [nope]` → `[ref]`; `supersedes: nope` → `[ref]`;
   - план `approved` без даты `approved` → `[header]`;
   - файл без шапки в `docs/archive/plans/` → чисто; файл без шапки в `docs/backlog/` → `[header]`.
@@ -242,7 +242,7 @@ export const VALID: Record<string, string>   // минимальное прав�
 - Modify: `CLAUDE.md`, `docs/roadmap.md`, `hooks/claude-md-snippet.md`, `hooks/README.md`
 
 - [ ] **Step 1:** Найти все упоминания переносимых путей: `grep -rn "superpowers\|ops/setup\|ops/reconcile" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.yml" --include="*.py" . --exclude-dir=node_modules --exclude-dir=.next`.
-- [ ] **Step 2:** Перенести файлы `git mv`; добавить шапки: дизайн и план диспетчерской — `status: done`; дизайн стандарта — `status: in-progress`, `kind: design`, `approved: 2026-11-26`; этот план — `kind: plan`, `status: in-progress`, `approved: 2026-11-26`.
+- [ ] **Step 2:** Перенести файлы `git mv`; добавить шапки: дизайн и план диспетчерской — `status: done`; дизайн стандарта — `status: done`, `kind: design`, `approved: 2026-11-26`; этот план — `kind: plan`, `status: done`, `approved: 2026-11-26`.
 - [ ] **Step 3:** Создать задачи. Подсистемы 3–8 дорожной карты — по задаче `idea`, `priority: 3` (метрики — `priority: 2`), `size: l`. Отложенные замечания ревью диспетчерской — по задаче `ready`, `type: bug` или `chore`, `size: s|m`: гонка записи строки PR; доставка записывается до применения; устаревший `mergeable`; набор символов `session_id`; отмена любого незавершённого прогона; бесконечный повтор правки удалённого сообщения Telegram; `main_red` истекает через 14 дней; выученный лимит macOS только растёт; переименование репозитория; названия сессий без сверки. Непроверенное на боевом сервисе (cron Vercel, расписание GitHub, очередь под нагрузкой, утренняя сводка) — одна задача `ready`, `type: chore`.
 - [ ] **Step 4:** Создать решения (`by: owner`, даты из спецификаций): репозиторий публичный; без Supabase, база в Neon; страница и Telegram; часовая сверка не настроена (`by: claude`); глубина стандарта — полная унификация; задачи — файл на задачу.
 - [ ] **Step 5:** `docs/project.md` (`stage: live`, `kind: service`, `platforms: [web]`), `docs/README.md` (строка на `roadmap.md`, `setup.md`), `docs/.standard.json`; исправить ссылки в `CLAUDE.md`, `roadmap.md`, `setup.md`.
