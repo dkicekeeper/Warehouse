@@ -10,6 +10,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/hooks/warehouse-report.py >/dev/null 2>&1 || true",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -233,6 +233,10 @@ function sourceWarnings(sources: SourceReading[], now: Date): string[] {
   if (hook?.lastErrorAt && (!hook.lastOkAt || hook.lastErrorAt.getTime() > hook.lastOkAt.getTime())) {
     out.push(`Вебхуки GitHub: ${hook.note ?? 'последняя доставка не обработана'}`);
   }
+  const sessionHook = by.get('session_hook');
+  if (sessionHook?.lastErrorAt && (!sessionHook.lastOkAt || sessionHook.lastErrorAt.getTime() > sessionHook.lastOkAt.getTime())) {
+    out.push(`Хук сессий: ${sessionHook.note ?? 'отчёты не приходят'}`);
+  }
   if (lateBy('github_resync', 60)) out.push('GitHub не сверялся больше часа — данные о PR и сборках могут быть устаревшими');
   if (lateBy('reconcile', 120)) out.push('Сверка сессий не приходила больше двух часов');
   return out;

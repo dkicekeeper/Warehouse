@@ -61,17 +61,38 @@ export async function applySessionReport(store: Store, r: SessionReport, now: Da
   await linkSessionToPr(store, r.session_id);
 }
 
-/** The hook knows best how a turn ended, so the list only fills in what the hook cannot see. */
-export async function applyReconcileBatch(store: Store, batch: ReconcileBatch): Promise<void> {
+const SILENT_HOOK_GRACE_MS = 10 * 60_000;
+const TURN_ENDED = new Set(['review_ready', 'completed', 'failed']);
+
+/**
+ * The hook knows best how a turn ended, so the list only fills in what the hook cannot see.
+ *
+ * Returns `silentHooks`: sessions that have reported through the hook before, whose turn has
+ * since ended according to the list, with no report to show for it. That is what a broken hook
+ * (a blocked host, a lost token) looks like from here.
+ */
+export async function applyReconcileBatch(store: Store, batch: ReconcileBatch): Promise<{ silentHooks: number }> {
+  let silentHooks = 0;
   for (const s of batch.sessions) {
+    const updatedAt = new Date(s.updated_at);
+    const known = await store.getSession(s.session_id);
+    if (
+      known?.reportedAt &&
+      !s.archived &&
+      TURN_ENDED.has(s.bucket) &&
+      updatedAt.getTime() > known.reportedAt.getTime() + SILENT_HOOK_GRACE_MS
+    ) {
+      silentHooks++;
+    }
     await store.upsertSession({
       id: s.session_id,
       title: s.title,
       archived: s.archived,
-      reconcile: { bucket: s.bucket, unread: s.unread, summary: s.summary, updatedAt: new Date(s.updated_at) },
+      reconcile: { bucket: s.bucket, unread: s.unread, summary: s.summary, updatedAt },
     });
   }
   await store.adoptSessionsFromPrs();
+  return { silentHooks };
 }
 
 /** The open pull request on the session's branch is the session's, unless a commit already named another. */

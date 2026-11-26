@@ -14,7 +14,9 @@
 
 ```bash
 pnpm install
-pnpm test        # vitest
+pnpm test        # vitest, база внутри процесса
+pnpm test:pg     # те же тесты через боевой драйвер на настоящем Postgres (TEST_DATABASE_URL)
+pnpm test:e2e    # сборка + браузерные тесты
 pnpm typecheck
 pnpm lint
 pnpm build

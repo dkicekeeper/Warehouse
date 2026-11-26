@@ -171,6 +171,31 @@ describe('resync', () => {
     expect(await store.getRun(5)).toMatchObject({ status: 'completed', conclusion: 'cancelled' });
   });
 
+  it('counts as drift what webhooks should have told it long ago, and nothing that is merely fresh', async () => {
+    const a = app();
+    expect(await a.resync(store, NOW)).toEqual({ drift: 0 }); // PR #3 was updated an hour ago in the fixture… but is new to an empty store
+    // A run the store believes is still going, which GitHub says finished 40 minutes ago.
+    await store.upsertRun(runFactory({ id: 5, repo: REPO, status: 'in_progress', conclusion: null, completedAt: null, createdAt: minutesAgo(90) }));
+    routes[`GET /repos/${REPO}/actions/runs/5`] = () => ({
+      id: 5, name: 'CI', head_branch: 'x', head_sha: 's', event: 'push', status: 'completed', conclusion: 'success',
+      created_at: minutesAgo(90).toISOString(), run_started_at: minutesAgo(90).toISOString(), updated_at: minutesAgo(40).toISOString(),
+    });
+    routes[`GET /repos/${REPO}/actions/runs/5/jobs`] = () => ({ jobs: [] });
+    // A PR the store has as open, which GitHub closed 30 minutes ago.
+    await store.upsertPr(prFactory({ repo: REPO, number: 8, updatedAt: minutesAgo(600) }));
+    routes[`GET /repos/${REPO}/pulls/8`] = () => ghPr({ number: 8, state: 'closed', merged: true, updated_at: minutesAgo(30).toISOString() });
+    expect(await a.resync(store, NOW)).toEqual({ drift: 2 });
+    expect(await a.resync(store, NOW)).toEqual({ drift: 0 });
+  });
+
+  it('a change from the last few minutes is not drift: its webhook may still be on the way', async () => {
+    const a = app();
+    await a.resync(store, NOW);
+    await store.upsertPr(prFactory({ repo: REPO, number: 8, updatedAt: minutesAgo(600) }));
+    routes[`GET /repos/${REPO}/pulls/8`] = () => ghPr({ number: 8, state: 'closed', updated_at: minutesAgo(2).toISOString() });
+    expect(await a.resync(store, NOW)).toEqual({ drift: 0 });
+  });
+
   it('one repository failing does not stop the others, and the error is reported', async () => {
     routes['GET /installation/repositories'] = () => ({
       repositories: [

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Stop hook: tells Warehouse how this session's turn ended.
+"""Session hook: tells Warehouse how this session's turn ended, and when the owner replied.
 
-Claude Code runs this when Claude stops. It reads the hook event from stdin, takes the end of
-Claude's last message (which carries the `Статус: …` line), and posts it to the Warehouse service
-together with the session id, repository and branch.
+On `Stop` it reads the hook event from stdin, takes the end of Claude's last message (which
+carries the `Статус: …` line), and posts it to the Warehouse service together with the session
+id, repository and branch. On `UserPromptSubmit` it reports only that the session is working
+again, so a request the owner has just answered stops waiting for them.
 
 It must never get in the session's way: it prints nothing, always exits 0, and gives up after
 five seconds whatever happens.
@@ -86,9 +87,17 @@ def main():
     if not session_id or not isinstance(session_id, str):
         return
 
-    message = event.get("last_assistant_message")
-    if not isinstance(message, str):
-        message = last_message_from_transcript(event.get("transcript_path") or "")
+    kind = event.get("hook_event_name") or "Stop"
+    if kind == "UserPromptSubmit":
+        # The owner answered: whatever the session was waiting for, it is working again.
+        # Only that fact is reported — never what the owner wrote.
+        message = "Статус: работаю — получено новое сообщение"
+    elif kind == "Stop":
+        message = event.get("last_assistant_message")
+        if not isinstance(message, str):
+            message = last_message_from_transcript(event.get("transcript_path") or "")
+    else:
+        return
 
     cwd = event.get("cwd") if isinstance(event.get("cwd"), str) and os.path.isdir(event.get("cwd")) else os.getcwd()
     body = {

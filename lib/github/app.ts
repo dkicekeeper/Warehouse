@@ -5,10 +5,17 @@ import type { Store } from '@/lib/store/store';
 const API = 'https://api.github.com';
 const SESSION_TRAILER = /Claude-Session:\s*https:\/\/claude\.ai\/code\/(session_[A-Za-z0-9]+)/;
 const DAY = 24 * 3600_000;
+/** A change this recent may simply have its webhook still on the way. */
+const DRIFT_GRACE_MS = 5 * 60_000;
 
 export interface GithubApp {
   /** Reads the truth from GitHub: open PRs and the last day of runs in every installed repository. */
-  resync(store: Store, now: Date): Promise<void>;
+  /**
+   * Returns `drift`: how many state changes it found that a webhook should have reported long ago
+   * (a stored-open PR that is closed, a stored-live run that is finished). Above zero means
+   * webhooks are not arriving.
+   */
+  resync(store: Store, now: Date): Promise<{ drift: number }>;
   /** Fetches one PR in full: mergeable, and the session named in its commit trailers. */
   enrichPr(store: Store, repo: string, number: number): Promise<void>;
   cancelRun(repo: string, runId: number): Promise<void>;
@@ -113,7 +120,7 @@ export function createGithubApp(config: {
     for (const j of jobs.jobs) await saveJob(store, repo, j, now);
   }
 
-  async function syncRepo(store: Store, info: RepoInfo, token: string, now: Date): Promise<void> {
+  async function syncRepo(store: Store, info: RepoInfo, token: string, now: Date): Promise<number> {
     const repo = info.full_name;
     await registerRepo(store, info);
     const before = await store.loadSnapshot(now);
@@ -145,21 +152,37 @@ export function createGithubApp(config: {
       const now2 = await store.getRun(id);
       if (!seen.has(id) || now2?.status === 'completed') await syncRunJobs(store, repo, id, token, now);
     }
+
+    // What changed long enough ago that a webhook should already have said so?
+    const old = (d: Date | null | undefined) => !!d && now.getTime() - d.getTime() > DRIFT_GRACE_MS;
+    let drift = 0;
+    for (const number of vanished) {
+      const pr = await store.getPr(repo, number);
+      if (pr && pr.state !== 'open' && old(pr.updatedAt)) drift++;
+    }
+    for (const r of before.runs) {
+      if (r.repo !== repo || r.status === 'completed') continue;
+      const after = await store.getRun(r.id);
+      if (after?.status === 'completed' && old(after.completedAt)) drift++;
+    }
+    return drift;
   }
 
   return {
     async resync(store, now) {
       const failures: string[] = [];
+      let drift = 0;
       for (const inst of await load()) {
         for (const info of inst.repos) {
           try {
-            await syncRepo(store, info, inst.token, now);
+            drift += await syncRepo(store, info, inst.token, now);
           } catch (err) {
             failures.push(`${info.full_name}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
       }
       if (failures.length > 0) throw new Error(failures.join('; '));
+      return { drift };
     },
 
     async enrichPr(store, repo, number) {

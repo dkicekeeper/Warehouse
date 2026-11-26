@@ -153,7 +153,34 @@ describe('applyReconcileBatch', () => {
     expect((await store.getSession('session_016AbC'))?.projectId).toBe(tenra.projectId);
   });
 
+  it('counts sessions that used to report through the hook and then changed without a word', async () => {
+    await applySessionReport(store, report(), minutesAgo(120));
+    await applySessionReport(store, report({ session_id: 'session_fresh' }), minutesAgo(6));
+    const out = await applyReconcileBatch(store, {
+      sessions: [
+        reconciled({ updated_at: minutesAgo(5).toISOString() }), // silent for 115 minutes after its report
+        reconciled({ session_id: 'session_fresh', updated_at: minutesAgo(5).toISOString() }), // reported a minute earlier
+        reconciled({ session_id: 'session_never', updated_at: minutesAgo(5).toISOString() }), // never had the hook
+        reconciled({ session_id: 'session_busy', bucket: 'working', updated_at: minutesAgo(5).toISOString() }),
+      ],
+    });
+    expect(out).toEqual({ silentHooks: 1 });
+  });
+
+  it('a session still at work, stuck on a prompt, or archived is not a silent hook', async () => {
+    for (const id of ['session_w', 'session_b', 'session_a']) await applySessionReport(store, report({ session_id: id }), minutesAgo(120));
+    const at = minutesAgo(5).toISOString();
+    const out = await applyReconcileBatch(store, {
+      sessions: [
+        reconciled({ session_id: 'session_w', bucket: 'working', updated_at: at }),
+        reconciled({ session_id: 'session_b', bucket: 'blocked', updated_at: at }),
+        reconciled({ session_id: 'session_a', archived: true, updated_at: at }),
+      ],
+    });
+    expect(out).toEqual({ silentHooks: 0 });
+  });
+
   it('handles an empty batch', async () => {
-    await expect(applyReconcileBatch(store, { sessions: [] })).resolves.toBeUndefined();
+    await expect(applyReconcileBatch(store, { sessions: [] })).resolves.toEqual({ silentHooks: 0 });
   });
 });

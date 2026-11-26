@@ -103,6 +103,26 @@ describe('warehouse-report hook', () => {
     expect(received[0]?.auth).toBe('Bearer proxy-injected');
   });
 
+  it('when the owner sends a message, reports the session as working and never the owner’s words', async () => {
+    const event = JSON.stringify({
+      session_id: '20e570d0-daba-559b-8477-09337c2e3975',
+      cwd: process.cwd(),
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'мой пароль hunter2, смержи',
+    });
+    const r = await run(event);
+    quiet(r);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.body.message_tail).toBe('Статус: работаю — получено новое сообщение');
+    expect(JSON.stringify(received[0]?.body)).not.toContain('hunter2');
+    expect(SessionReport.safeParse(received[0]?.body).success).toBe(true);
+  });
+
+  it('ignores hook events it was not written for', async () => {
+    quiet(await run(JSON.stringify({ session_id: 'x', hook_event_name: 'PreToolUse', tool_name: 'Bash' })));
+    expect(received).toEqual([]);
+  });
+
   it('sends only the last 2000 characters of a long message', async () => {
     await run(stop({ last_assistant_message: 'а'.repeat(5000) + '\nСтатус: готово — всё' }));
     const tail = String(received[0]?.body.message_tail);

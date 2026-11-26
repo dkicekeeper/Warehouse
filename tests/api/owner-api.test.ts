@@ -27,7 +27,7 @@ const deps = (over: Partial<OwnerDeps> = {}): OwnerDeps => ({
   now: NOW,
   isOwner: async () => owner,
   github: {
-    resync: async () => {},
+    resync: async () => ({ drift: 0 }),
     enrichPr: async () => {},
     failedDeliveriesSince: async () => 0,
     cancelRun: async (repo, id) => {

@@ -129,6 +129,15 @@ describe('POST /api/report/sessions', () => {
     expect(after).toBe(1);
   });
 
+  it('marks the hook source unhealthy when sessions changed without reporting', async () => {
+    await handleSessionReport(post(report({ session_id: 'session_0' })), deps({ now: new Date(NOW.getTime() - 120 * 60_000) }));
+    await handleReconcile(post(batch(1)), deps());
+    expect((await store.getSources()).find((s) => s.source === 'session_hook')).toMatchObject({
+      lastErrorAt: NOW,
+      note: 'сессий обновилось без отчёта хука: 1',
+    });
+  });
+
   it('requires the token', async () => {
     expect((await handleReconcile(post(batch(), null), deps())).status).toBe(401);
   });

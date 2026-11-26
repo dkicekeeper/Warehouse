@@ -18,7 +18,7 @@ async function handle<S extends z.ZodTypeAny>(
   deps: ReportDeps,
   schema: S,
   source: SourceName,
-  apply: (store: Store, body: z.infer<S>, now: Date) => Promise<void>,
+  apply: (store: Store, body: z.infer<S>, now: Date) => Promise<unknown>,
 ): Promise<Response> {
   if (!verifyBearer(req, deps.token)) return empty(401);
   let json: unknown;
@@ -44,4 +44,9 @@ export const handleSessionReport = (req: Request, deps: ReportDeps) =>
   handle(req, deps, SessionReport, 'session_hook', applySessionReport);
 
 export const handleReconcile = (req: Request, deps: ReportDeps) =>
-  handle(req, deps, ReconcileBatch, 'reconcile', applyReconcileBatch);
+  handle(req, deps, ReconcileBatch, 'reconcile', async (store, body, now) => {
+    const { silentHooks } = await applyReconcileBatch(store, body);
+    if (silentHooks > 0) {
+      await store.touchSource('session_hook', now, false, `сессий обновилось без отчёта хука: ${silentHooks}`);
+    }
+  });

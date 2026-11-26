@@ -10,14 +10,17 @@ let store: PgStore;
 let log: string[];
 let github: GithubApp;
 let failedDeliveries: number;
+let drift: number;
 
 beforeEach(async () => {
   ({ store } = await testStore());
   log = [];
   failedDeliveries = 0;
+  drift = 0;
   github = {
     resync: async () => {
       log.push('resync');
+      return { drift };
     },
     enrichPr: async () => {},
     cancelRun: async () => {},
@@ -105,6 +108,23 @@ describe('tick', () => {
       lastErrorAt: NOW,
       note: 'GitHub не смог доставить вебхуков за последний час: 3',
     });
+  });
+
+  it('flags webhooks as lost when a resync finds changes no webhook reported', async () => {
+    await store.touchSource('github_resync', minutesAgo(20), true);
+    await store.touchSource('github_webhook', minutesAgo(300), true);
+    drift = 4;
+    await tick();
+    expect((await store.getSources()).find((s) => s.source === 'github_webhook')).toMatchObject({
+      lastErrorAt: NOW,
+      note: 'сверка нашла изменения, о которых вебхуки не сообщили: 4',
+    });
+  });
+
+  it('does not read the very first resync as lost webhooks: everything is new then', async () => {
+    drift = 40;
+    await tick();
+    expect((await store.getSources()).find((s) => s.source === 'github_webhook')).toBeUndefined();
   });
 
   it('without a configured GitHub App it only recomputes', async () => {

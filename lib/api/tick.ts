@@ -34,10 +34,15 @@ export async function handleTick(req: Request, deps: TickDeps): Promise<Response
     const lastAttempt = Math.max(last?.lastOkAt?.getTime() ?? 0, last?.lastErrorAt?.getTime() ?? 0);
     if (now.getTime() - lastAttempt >= RESYNC_EVERY_MIN * MINUTE) {
       try {
-        await deps.github.resync(store, now);
+        const { drift } = await deps.github.resync(store, now);
         await store.adoptSessionsFromPrs();
         await store.touchSource('github_resync', now, true);
         out.resync = 'ok';
+        // The first resync finds everything new; after that, finding old changes means the
+        // webhooks that should have reported them never came.
+        if (drift > 0 && last?.lastOkAt) {
+          await store.touchSource('github_webhook', now, false, `сверка нашла изменения, о которых вебхуки не сообщили: ${drift}`);
+        }
       } catch (err) {
         out.resync = message(err);
         await store.touchSource('github_resync', now, false, out.resync).catch(() => {});
