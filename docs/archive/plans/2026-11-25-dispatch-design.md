@@ -1,3 +1,10 @@
+---
+status: done
+kind: design
+created: 2026-11-25
+updated: 2026-11-26
+approved: 2026-11-25
+---
 # Диспетчерская: дизайн
 
 2026-11-25. Первая подсистема Warehouse ([дорожная карта](../../roadmap.md)).
