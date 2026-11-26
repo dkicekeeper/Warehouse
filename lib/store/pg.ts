@@ -409,6 +409,18 @@ export class PgStore implements Store {
     );
   }
 
+  async adoptSessionsFromPrs(): Promise<void> {
+    await this.sql.query(
+      `update sessions s
+          set project_id = r.project_id,
+              repo = coalesce(s.repo, pr.repo),
+              branch = coalesce(s.branch, pr.branch)
+         from pull_requests pr
+         join repos r on r.full_name = pr.repo
+        where pr.session_id = s.id and s.project_id is null`,
+    );
+  }
+
   async upsertPr(p: PullRequest): Promise<void> {
     await this.sql.query(
       `insert into pull_requests (repo, number, title, branch, head_sha, state, draft, mergeable, checks, opened_at, updated_at, session_id)

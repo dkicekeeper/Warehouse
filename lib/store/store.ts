@@ -52,6 +52,11 @@ export interface Store {
   patchSettings(patch: Partial<Settings>): Promise<void>;
 
   upsertSession(session: SessionPatch): Promise<void>;
+  /**
+   * Sessions without a project that a pull request names (through its commit trailers) take that
+   * pull request's project, repository and branch.
+   */
+  adoptSessionsFromPrs(): Promise<void>;
   upsertPr(pr: PullRequest): Promise<void>;
   upsertRun(run: Run): Promise<void>;
   upsertJob(job: Job): Promise<void>;
