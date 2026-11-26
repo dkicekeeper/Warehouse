@@ -1,3 +1,11 @@
+---
+status: in-progress
+kind: plan
+created: 2026-11-26
+updated: 2026-11-26
+approved: 2026-11-26
+tasks: [2026-11-26-standard-rollout]
+---
 # Стандарт ведения проекта: план реализации
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -8,7 +16,7 @@
 
 **Tech Stack:** Python 3 (только стандартная библиотека), тесты Vitest, которые запускают скрипты так же, как `tests/hooks/report.test.ts`; GitHub Actions.
 
-**Spec:** [docs/superpowers/specs/2026-11-26-project-standard-design.md](../specs/2026-11-26-project-standard-design.md)
+**Spec:** [2026-11-26-project-standard-design.md](2026-11-26-project-standard-design.md)
 
 ## Global Constraints
 
@@ -229,7 +237,7 @@ export const VALID: Record<string, string>   // минимальное прав�
 ### Task 7: Переезд Warehouse
 
 **Files:**
-- Move: `docs/superpowers/specs/2026-11-25-dispatch-design.md` → `docs/archive/plans/`; `docs/superpowers/plans/2026-11-25-dispatch.md` → `docs/archive/plans/2026-11-25-dispatch-plan.md`; `docs/superpowers/specs/2026-11-26-project-standard-design.md` → `docs/plans/`; этот файл → `docs/plans/2026-11-26-project-standard-plan.md`; `ops/setup.md` → `docs/setup.md`; `ops/reconcile-prompt.md` → `docs/archive/`
+- Move: `docs/superpowers/specs/2026-11-25-dispatch-design.md` → `docs/archive/plans/`; `docs/superpowers/plans/2026-11-25-dispatch.md` → `docs/archive/plans/2026-11-25-dispatch-plan.md`; `docs/superpowers/specs/2026-11-26-project-standard-design.md` → `docs/plans/`; этот файл → `docs/plans/2026-11-26-project-standard.md` (имя сохранено: по нему названа рабочая папка исполнения); `ops/setup.md` → `docs/setup.md`; `ops/reconcile-prompt.md` → `docs/archive/`
 - Create: `docs/README.md`, `docs/project.md`, `docs/.standard.json`, `docs/backlog/*.md`, `docs/decisions/*.md`, `.github/workflows/standard.yml`
 - Modify: `CLAUDE.md`, `docs/roadmap.md`, `hooks/claude-md-snippet.md`, `hooks/README.md`
 

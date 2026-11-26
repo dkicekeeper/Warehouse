@@ -15,3 +15,9 @@ describe('standard/template', () => {
     expect(data.backlog[0]?.status).toBe('idea');
   });
 });
+
+describe('this repository', () => {
+  it('follows its own standard', () => {
+    expect(runLint(process.cwd())).toEqual({ code: 0, out: '' });
+  });
+});
