@@ -51,3 +51,16 @@ describe('lint.py: relative links', () => {
     expect(lint(page('![схема](schema.png)')).out).toContain('[link]');
   });
 });
+
+describe('lint.py: files it cannot read', () => {
+  it('reports a dangling symlink instead of crashing', async () => {
+    const { symlinkSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const root = makeTree({ ...VALID, 'docs/README.md': '# Docs\narchitecture.md dangling.md\n' });
+    symlinkSync('nowhere.md', join(root, 'docs', 'dangling.md'));
+    const r = runLint(root);
+    expect(r.out).not.toContain('Traceback');
+    expect(r.code).toBe(1);
+    expect(r.out).toContain('docs/dangling.md: [tree]');
+  });
+});

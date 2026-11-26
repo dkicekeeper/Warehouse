@@ -55,6 +55,14 @@ describe('lint.py: the tree', () => {
     expect(r.out).toContain('docs/My_File.md: [name]');
   });
 
+  it('accepts version numbers in a name', () => {
+    expect(lint({
+      'docs/migration-8.0.md': '# m\n', 'docs/plans/2026-11-25-app-1.1-design.md': VALID['docs/plans/2026-11-20-notifications.md']!,
+      'docs/README.md': '# Docs\narchitecture.md migration-8.0.md\n',
+    })).toEqual(clean);
+    expect(lint({ 'docs/a..b.md': '# x\n', 'docs/README.md': '# Docs\narchitecture.md a..b.md\n' }).out).toContain('[name]');
+  });
+
   it('accepts README.md, locale codes and dotfiles', () => {
     expect(lint({
       'docs/domains/pt-BR.md': '# pt\n', 'docs/README.md': '# Docs\narchitecture.md domains/pt-BR.md\n',

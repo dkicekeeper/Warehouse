@@ -105,3 +105,24 @@ describe('lint.py: backlog, plans, decisions', () => {
     expect(lint({ [D]: DECISION.replace('by: owner', 'by: me') }).out).toContain('owner, claude');
   });
 });
+
+describe('lint.py: findings of the branch review', () => {
+  it('reports a list where one value is expected instead of crashing', () => {
+    const r = lint({ [D]: DECISION.replace('by: owner', 'by: owner\nsupersedes: [x]') });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain(`${D}: [header]`);
+    expect(r.out).not.toContain('Traceback');
+    const t = lint({ [T]: TASK.replace('size: m', 'size: m\nplan: [a]\nbranch: [b]') });
+    expect(t.out).toContain(`${T}: [header]`);
+    expect(t.out).not.toContain('Traceback');
+    const p = lint({ [PL]: PLAN.replace('[2026-11-26-attachments]', '[[a]]') });
+    expect(p.out).not.toContain('Traceback');
+  });
+
+  it('finds the plan of an archived task after the plan moved to the archive too', () => {
+    expect(lint({
+      'docs/archive/backlog/2026-11-01-old.md': TASK.replace('status: ready', 'status: done').replace('size: m', 'size: m\nplan: plans/2026-01-01-old.md'),
+      'docs/archive/plans/2026-01-01-old.md': PLAN.replace('status: approved', 'status: done').replace('tasks: [2026-11-26-attachments]', 'tasks: [2026-11-01-old]'),
+    })).toEqual(clean);
+  });
+});

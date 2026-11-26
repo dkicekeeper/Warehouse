@@ -122,8 +122,21 @@ def title_of(body):
 
 
 def read_text(path):
-    with open(path, encoding="utf-8", errors="replace") as f:
-        return f.read()
+    """Текст файла; пустая строка, если его не прочитать (об этом говорит check_structure)."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def unreadable(path):
+    try:
+        with open(path, "rb") as f:
+            f.read(1)
+        return False
+    except OSError:
+        return True
 
 
 def _records(root, folder, archived):
@@ -202,7 +215,7 @@ FOLDERS = ["backlog", "plans", "decisions", "domains", "public", "archive"]
 FREE = ("docs/archive/", "docs/public/")  # история и сайт: любые папки и имена
 STAGES = ["idea", "development", "beta", "live", "maintenance"]
 PROJECT_KINDS = ["ios-app", "web", "library", "service"]
-NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+)+$")
+NAME = re.compile(r"^[a-z0-9]+([-.][a-z0-9]+)*$")
 LOCALE = re.compile(r"^[a-z]{2,3}(-[A-Za-z]{2,4})?\.md$")
 
 
@@ -284,6 +297,8 @@ def check_structure(root, tree, ignore):
         if rel.startswith(FREE):
             continue
         name = rel.rsplit("/", 1)[1]
+        if rel.endswith(".md") and unreadable(os.path.join(root, rel)):
+            found.append((rel, "tree", "файл не читается (ссылка в никуда или нет прав). Удалите его или почините"))
         if not (name.startswith(".") or name == "README.md" or NAME.match(name) or LOCALE.match(name)):
             found.append((rel, "name", "имя не по стандарту. Строчные латинские буквы и цифры, слова через дефис"))
         inner = rel[len("docs/"):]
@@ -356,8 +371,11 @@ def check_records(root, tree, ignore):
             for key in fields:
                 if key not in FIELDS[folder]:
                     bad("header", "неизвестное поле «%s». Допустимы: %s" % (key, one_of(FIELDS[folder])))
+            for key, value in fields.items():
+                if key in FIELDS[folder] and key != "tasks" and isinstance(value, (list, dict)):
+                    bad("header", "%s: нужно одно значение, а не список" % key)
             for key, allowed in VALUES[folder].items():
-                if key in fields and (isinstance(fields[key], bool) or fields[key] not in allowed):
+                if key in fields and (isinstance(fields[key], (bool, list, dict)) or fields[key] not in allowed):
                     bad("header", "%s: «%s». Допустимо: %s" % (key, fields[key], one_of(allowed)))
             for key in DATES[folder]:
                 if key in fields and not is_date(fields[key]):
@@ -393,16 +411,17 @@ def check_records(root, tree, ignore):
                     bad("dor", "большая задача (size: l) в работе без плана. Поле plan: plans/<файл>.md")
 
             plan = fields.get("plan") if folder == "backlog" else None
-            if plan is not None and not os.path.isfile(os.path.join(root, "docs", str(plan))):
-                bad("ref", "plan: файла docs/%s нет. Путь пишется от docs/" % plan)
+            if isinstance(plan, str) and not any(
+                    os.path.isfile(os.path.join(root, "docs", base, plan)) for base in ("", "archive")):
+                bad("ref", "plan: файла docs/%s нет (и в docs/archive/ тоже). Путь пишется от docs/" % plan)
             if folder == "plans" and isinstance(fields.get("tasks"), list):
                 for task in fields["tasks"]:
-                    if task not in ids["backlog"]:
+                    if not isinstance(task, str) or task not in ids["backlog"]:
                         bad("ref", "tasks: задачи «%s» нет ни в docs/backlog/, ни в архиве" % task)
             elif folder == "plans" and "tasks" in fields:
                 bad("header", "tasks: нужен список в скобках, например [2026-11-26-слово] или []")
             supersedes = fields.get("supersedes") if folder == "decisions" else None
-            if supersedes is not None and supersedes not in ids["decisions"]:
+            if isinstance(supersedes, str) and supersedes not in ids["decisions"]:
                 bad("ref", "supersedes: решения «%s» нет ни в docs/decisions/, ни в архиве" % supersedes)
     return found
 

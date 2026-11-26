@@ -80,3 +80,13 @@ describe('sync_block.py', () => {
     writeFileSync(join(makeTree({}), 'x'), '');
   });
 });
+
+describe('standard/agents.md', () => {
+  it('shows a task sample that passes its own lint', async () => {
+    const { VALID, makeTree: tree, runLint } = await import('./tree');
+    const source = readFileSync(join(process.cwd(), 'standard', 'agents.md'), 'utf8');
+    const sample = /```\n(---\nstatus: ready[\s\S]*?)```/.exec(source)![1]!;
+    const root = tree({ ...VALID, 'docs/backlog/2026-11-27-sample.md': sample });
+    expect(runLint(root)).toEqual({ code: 0, out: '' });
+  });
+});
