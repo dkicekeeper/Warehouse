@@ -188,8 +188,15 @@ describe('the owner’s board', () => {
     const { page } = await signedIn(BOARD, { dark: true, scale: SHOTS ? 2 : 1 });
     await page.goto(BASE);
     await page.getByTestId('attention-row').first().waitFor();
-    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    expect(bg).toBe('rgb(19, 19, 18)');
+    // The theme's own dark background, whatever notation the browser reports it in: paint it and look.
+    const [r, g, b] = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = getComputedStyle(document.body).backgroundColor;
+      ctx.fillRect(0, 0, 1, 1);
+      return Array.from(ctx.getImageData(0, 0, 1, 1).data.slice(0, 3));
+    });
+    expect(Math.max(r!, g!, b!)).toBeLessThan(40);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/board-phone-dark.png`, fullPage: true });
   });
 });

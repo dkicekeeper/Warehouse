@@ -1,11 +1,12 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: 1
 size: l
 created: 2026-11-26
 updated: 2026-11-26
 plan: plans/2026-11-26-backlog-panel-design.md
+pr: 6
 branch: claude/wizardly-ptolemy-l81oa3
 ---
 # Подсистема 3: бэклог и планы на панели
@@ -19,5 +20,5 @@ branch: claude/wizardly-ptolemy-l81oa3
 - на боевом сервисе видны записи всех шести репозиториев;
 - правка задачи в `main` репозитория появляется на странице без ручных действий.
 
-Заметки: строка в [дорожной карте](../roadmap.md). Не входит: правка задач с сайта, Telegram,
+Заметки: строка в [дорожной карте](../../roadmap.md). Не входит: правка задач с сайта, Telegram,
 архив, замок на задачу.

@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BacklogSummary, TaskRow } from '@/lib/domain/backlog';
 import type { AttentionRow, BoardView as BaseBoardView, ProjectView, QueueRowView } from '@/lib/domain/board';
 import { approx, duration, plural, secondsAgo, stageLabel } from './format';
+import { Chip, EmptyRow, Notice, Page, Section, SmallButton, link } from './page';
+import { Skeleton } from './ui/skeleton';
 
 /** The board as /api/board sends it: the dispatch view plus what the projects' docs say. */
 type BoardView = BaseBoardView & { backlog?: BacklogSummary };
@@ -81,29 +83,32 @@ export function Board() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl px-4 pb-16 pt-4">
-      <header className="flex items-baseline justify-between gap-3">
-        <h1 className="text-lg font-semibold">Warehouse</h1>
-        <div className="flex items-baseline gap-3 text-xs text-muted">
-          <span data-testid="freshness" className={offline ? 'text-bad' : undefined}>
+    <Page
+      title="Warehouse"
+      aside={
+        <>
+          <span data-testid="freshness" className={offline ? 'text-destructive' : undefined}>
             {offline ? 'нет связи · ' : ''}
             {board ? secondsAgo(board.generatedAt, now ?? new Date(board.generatedAt)) : offline ? '' : 'загрузка…'}
           </span>
-          <Link href="/backlog">Задачи</Link>
-          <Link href="/settings">Настройки</Link>
-        </div>
-      </header>
-
+          <Link href="/backlog" className={link}>
+            Задачи
+          </Link>
+          <Link href="/settings" className={link}>
+            Настройки
+          </Link>
+        </>
+      }
+    >
       {error && (
-        <p role="alert" className="mt-3 rounded-md border border-line bg-warn-bg px-3 py-2 text-sm text-warn">
+        <Notice role="alert" tone="error">
           {error}
-        </p>
+        </Notice>
       )}
       {board?.warnings.map((w) => (
-        <p key={w} role="status" className="mt-3 rounded-md border border-line bg-warn-bg px-3 py-2 text-sm text-warn">
-          {w}
-        </p>
+        <Notice key={w}>{w}</Notice>
       ))}
+      {!board && !offline && <Skeleton className="h-40 w-full rounded-xl" />}
 
       {board && (
         <>
@@ -113,35 +118,9 @@ export function Board() {
           <Projects projects={board.projects} backlog={board.backlog?.byProject ?? {}} />
         </>
       )}
-    </div>
+    </Page>
   );
 }
-
-function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="mt-6">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>
-        {aside && <div className="text-xs text-muted">{aside}</div>}
-      </div>
-      <div className="overflow-hidden rounded-lg border border-line bg-panel">{children}</div>
-    </section>
-  );
-}
-
-const Empty = ({ children }: { children: React.ReactNode }) => <p className="px-3 py-4 text-sm text-muted">{children}</p>;
-
-const Chip = ({ children }: { children: React.ReactNode }) => (
-  <span className="shrink-0 rounded bg-paper px-1.5 py-0.5 text-xs font-medium">{children}</span>
-);
-
-const SmallButton = (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-  <button
-    type="button"
-    {...props}
-    className="min-h-8 rounded border border-line bg-paper px-2 text-xs text-ink hover:border-muted disabled:opacity-50"
-  />
-);
 
 type Act = (url: string, body?: unknown) => Promise<void>;
 
@@ -153,9 +132,9 @@ function Attention({ rows, snoozed, act }: { rows: AttentionRow[]; snoozed: numb
       aside={snoozed > 0 ? `отложено: ${snoozed}` : undefined}
     >
       {rows.length === 0 ? (
-        <Empty>Ничего не ждёт вашего внимания.</Empty>
+        <EmptyRow>Ничего не ждёт вашего внимания.</EmptyRow>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="divide-y divide-border">
           {rows.map((r) => (
             <AttentionItem key={r.id} row={r} act={act} />
           ))}
@@ -173,20 +152,20 @@ function AttentionItem({ row, act }: { row: AttentionRow; act: Act }) {
       <div className="flex items-start gap-2">
         <Chip>{row.project}</Chip>
         <p className="min-w-0 flex-1 break-words text-sm">
-          {row.fresh && <span title="ещё не отправлено в Telegram" className="mr-1 text-accent">●</span>}
+          {row.fresh && <span title="ещё не отправлено в Telegram" className="mr-1 font-medium text-foreground">●</span>}
           {row.text}
         </p>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-0.5 text-xs text-muted">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-0.5 text-xs text-muted-foreground">
         <span>{duration(row.ageMin)}</span>
         {note && <span>заметка</span>}
         {row.prUrl && (
-          <a href={row.prUrl} target="_blank" rel="noreferrer">
+          <a href={row.prUrl} target="_blank" rel="noreferrer" className={link}>
             PR
           </a>
         )}
         {row.sessionUrl && (
-          <a href={row.sessionUrl} target="_blank" rel="noreferrer">
+          <a href={row.sessionUrl} target="_blank" rel="noreferrer" className={link}>
             сессия
           </a>
         )}
@@ -224,9 +203,9 @@ function Queue({ queue, act }: { queue: BoardView['queue']; act: Act }) {
   return (
     <Section title="Очередь macOS" aside={`идёт ${queue.running} · ждёт ${queue.waiting} · ${free}`}>
       {queue.rows.length === 0 ? (
-        <Empty>Очередь пуста.</Empty>
+        <EmptyRow>Очередь пуста.</EmptyRow>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="divide-y divide-border">
           {queue.rows.map((r) => (
             <QueueItem key={r.jobId} row={r} act={act} />
           ))}
@@ -254,23 +233,23 @@ function QueueItem({ row, act }: { row: QueueRowView; act: Act }) {
         </span>
         <Chip>{row.project}</Chip>
         <p className="min-w-0 flex-1 text-sm">
-          <a href={row.runUrl} target="_blank" rel="noreferrer" className="text-ink underline-offset-2 hover:underline">
+          <a href={row.runUrl} target="_blank" rel="noreferrer" className={link}>
             {row.workflow}
           </a>{' '}
-          <span className="break-all text-muted">{row.branch}</span>
+          <span className="break-all text-muted-foreground">{row.branch}</span>
         </p>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-6 text-xs text-muted">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-6 text-xs text-muted-foreground">
         <span className="sr-only">{running ? 'идёт' : 'ждёт'}</span>
         <span>{timing}</span>
         {row.sessionUrl ? (
-          <a href={row.sessionUrl} target="_blank" rel="noreferrer">
+          <a href={row.sessionUrl} target="_blank" rel="noreferrer" className={link}>
             {row.sessionTitle ? `сессия «${row.sessionTitle}»` : 'сессия'}
           </a>
         ) : (
           <span>{row.origin === 'session' && row.sessionTitle ? `сессия «${row.sessionTitle}»` : ORIGIN[row.origin]}</span>
         )}
-        {row.stale && <span className="rounded bg-warn-bg px-1.5 py-0.5 text-warn">устарел: есть сборка новее</span>}
+        {row.stale && <span className="rounded bg-warning/10 px-1.5 py-0.5 text-warning">устарел: есть сборка новее</span>}
         {(row.stale || !running) && (
           <span className="ml-auto">
             <SmallButton onClick={cancel}>отменить</SmallButton>
@@ -282,10 +261,10 @@ function QueueItem({ row, act }: { row: QueueRowView; act: Act }) {
 }
 
 const CHECKS: Record<string, { text: string; tone: string }> = {
-  success: { text: 'CI зелёный', tone: 'text-good' },
-  failure: { text: 'CI упал', tone: 'text-bad' },
-  pending: { text: 'CI идёт', tone: 'text-muted' },
-  none: { text: 'без проверок', tone: 'text-muted' },
+  success: { text: 'CI зелёный', tone: 'text-success' },
+  failure: { text: 'CI упал', tone: 'text-destructive' },
+  pending: { text: 'CI идёт', tone: 'text-muted-foreground' },
+  none: { text: 'без проверок', tone: 'text-muted-foreground' },
 };
 
 const CONCLUSION: Record<string, string> = {
@@ -306,17 +285,17 @@ const STATE: Record<string, string> = {
 /** Tasks from the projects' backlogs that only the owner can move. They stay until the task changes. */
 function OwnerTasks({ tasks }: { tasks: TaskRow[] }) {
   return (
-    <Section title="Задачи ждут вас" aside={<Link href="/backlog">все задачи</Link>}>
-      <ul className="divide-y divide-line">
+    <Section title="Задачи ждут вас" aside={<Link href="/backlog" className={link}>все задачи</Link>}>
+      <ul className="divide-y divide-border">
         {tasks.map((t) => (
           <li key={`${t.repo}/${t.id}`} data-testid="owner-task" className="px-3 py-2 text-sm">
             <div className="flex flex-wrap items-baseline gap-x-2">
               <Chip>{t.project}</Chip>
-              <a href={t.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 text-ink underline-offset-2 hover:underline">
+              <a href={t.url} target="_blank" rel="noreferrer" className={`min-w-0 flex-1 ${link}`}>
                 {t.title}
               </a>
             </div>
-            <p className="mt-1 text-xs text-muted">Нужно от вас: {t.needsOwner}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Нужно от вас: {t.needsOwner}</p>
           </li>
         ))}
       </ul>
@@ -328,17 +307,17 @@ function Projects({ projects, backlog }: { projects: ProjectView[]; backlog: Bac
   return (
     <Section title="Проекты">
       {projects.length === 0 ? (
-        <Empty>Проектов пока нет: они появятся, когда приложение GitHub сообщит о репозиториях.</Empty>
+        <EmptyRow>Проектов пока нет: они появятся, когда приложение GitHub сообщит о репозиториях.</EmptyRow>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="divide-y divide-border">
           {projects.map((p) => (
             <li key={p.id ?? 'none'} data-testid="project-row">
               <details>
                 <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
                   <span className="font-medium">{p.name}</span>
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-muted-foreground">
                     {plural(p.sessions.length, ['сессия', 'сессии', 'сессий'])} · {p.prs.length} PR
-                    {p.waiting > 0 && <span className="text-accent"> · {p.waiting} ждёт вас</span>}
+                    {p.waiting > 0 && <span className="font-medium text-foreground"> · {p.waiting} ждёт вас</span>}
                   </span>
                   <ProjectDocs id={p.id} docs={p.id ? backlog[p.id] : undefined} />
                 </summary>
@@ -356,11 +335,11 @@ function Projects({ projects, backlog }: { projects: ProjectView[]; backlog: Bac
 function ProjectDocs({ id, docs }: { id: string | null; docs: BacklogSummary['byProject'][string] | undefined }) {
   if (!id || !docs) return null;
   return (
-    <span className="ml-auto flex items-baseline gap-2 text-xs text-muted" data-testid="project-docs">
+    <span className="ml-auto flex items-baseline gap-2 text-xs text-muted-foreground" data-testid="project-docs">
       {docs.stage && <span>{stageLabel(docs.stage)}</span>}
-      <Link href={`/backlog?project=${encodeURIComponent(id)}`}>
+      <Link href={`/backlog?project=${encodeURIComponent(id)}`} className={link}>
         {plural(docs.open, ['задача', 'задачи', 'задач'])}
-        {docs.needsOwner > 0 && <span className="text-accent"> · {docs.needsOwner} ждёт вас</span>}
+        {docs.needsOwner > 0 && <span className="font-medium text-foreground"> · {docs.needsOwner} ждёт вас</span>}
       </Link>
     </span>
   );
@@ -368,7 +347,7 @@ function ProjectDocs({ id, docs }: { id: string | null; docs: BacklogSummary['by
 
 function ProjectBody({ project: p }: { project: ProjectView }) {
   if (p.sessions.length + p.prs.length + p.runs.length === 0) {
-    return <p className="px-3 pb-3 text-xs text-muted">Ни сессий, ни открытых PR, ни сборок за последние сутки.</p>;
+    return <p className="px-3 pb-3 text-xs text-muted-foreground">Ни сессий, ни открытых PR, ни сборок за последние сутки.</p>;
   }
   return (
     <div className="space-y-3 px-3 pb-3 text-sm">
@@ -377,13 +356,13 @@ function ProjectBody({ project: p }: { project: ProjectView }) {
           {p.sessions.map((s) => (
             <li key={s.id} className="flex flex-wrap items-baseline gap-x-2">
               {s.url ? (
-                <a href={s.url} target="_blank" rel="noreferrer">
+                <a href={s.url} target="_blank" rel="noreferrer" className={link}>
                   {s.title ?? 'сессия'}
                 </a>
               ) : (
                 <span>{s.title ?? 'локальная сессия'}</span>
               )}
-              <span className={`text-xs ${s.state === 'needs_owner' ? 'text-accent' : 'text-muted'}`}>
+              <span className={`text-xs ${s.state === 'needs_owner' ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
                 {s.state === 'working' && !s.working ? 'молчит' : STATE[s.state]}
                 {s.stateText ? ` — ${s.stateText}` : ''} · {duration(s.ageMin)}
               </span>
@@ -394,16 +373,16 @@ function ProjectBody({ project: p }: { project: ProjectView }) {
       {p.prs.length > 0 && (
         <ul className="space-y-1.5">
           {p.prs.map((pr) => {
-            const c = CHECKS[pr.checks] ?? { text: pr.checks, tone: 'text-muted' };
+            const c = CHECKS[pr.checks] ?? { text: pr.checks, tone: 'text-muted-foreground' };
             return (
               <li key={`${pr.repo}#${pr.number}`} className="flex flex-wrap items-baseline gap-x-2">
-                <a href={pr.url} target="_blank" rel="noreferrer">
+                <a href={pr.url} target="_blank" rel="noreferrer" className={link}>
                   #{pr.number} {pr.title}
                 </a>
-                <span className="text-xs text-muted">
+                <span className="text-xs text-muted-foreground">
                   <span className={c.tone}>{c.text}</span>
                   {pr.draft && ' · черновик'}
-                  {pr.mergeable === false && <span className="text-bad"> · конфликт</span>} · ведёт: {pr.ledBy === 'session' ? 'сессия' : 'никто'} ·{' '}
+                  {pr.mergeable === false && <span className="text-destructive"> · конфликт</span>} · ведёт: {pr.ledBy === 'session' ? 'сессия' : 'никто'} ·{' '}
                   {duration(pr.ageMin)}
                 </span>
               </li>
@@ -412,14 +391,14 @@ function ProjectBody({ project: p }: { project: ProjectView }) {
         </ul>
       )}
       {p.runs.length > 0 && (
-        <ul className="space-y-1 text-xs text-muted">
+        <ul className="space-y-1 text-xs text-muted-foreground">
           {p.runs.map((r) => (
             <li key={r.id} className="flex flex-wrap gap-x-2">
-              <a href={r.url} target="_blank" rel="noreferrer">
+              <a href={r.url} target="_blank" rel="noreferrer" className={link}>
                 {r.workflow}
               </a>
               <span className="break-all">{r.branch}</span>
-              <span className={r.conclusion === 'failure' || r.conclusion === 'timed_out' ? 'text-bad' : r.conclusion === 'success' ? 'text-good' : undefined}>
+              <span className={r.conclusion === 'failure' || r.conclusion === 'timed_out' ? 'text-destructive' : r.conclusion === 'success' ? 'text-success' : undefined}>
                 {r.status === 'completed' ? (CONCLUSION[r.conclusion ?? ''] ?? r.conclusion ?? 'завершён') : r.status === 'in_progress' ? 'идёт' : 'в очереди'}
               </span>
               <span>{duration(r.ageMin)} назад</span>
