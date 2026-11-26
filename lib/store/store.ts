@@ -1,0 +1,69 @@
+import type { DesiredItem } from '@/lib/domain/attention';
+import type { ItemChanges, ItemPatch, StoredItem } from '@/lib/domain/items';
+import type { Job, Project, PullRequest, Repo, Run, Session, Settings, Snapshot } from '@/lib/domain/types';
+
+export type SourceName = 'github_webhook' | 'github_resync' | 'session_hook' | 'reconcile';
+
+export interface SourceHealth {
+  source: SourceName;
+  lastOkAt: Date | null;
+  lastErrorAt: Date | null;
+  note: string | null;
+}
+
+export type SessionPatch = Partial<Omit<Session, 'id'>> & { id: string };
+
+/** Everything the service keeps. One implementation (Postgres); tests run it on PGlite. */
+export interface Store {
+  /** What the rules and the board need: open PRs, live and recent runs, live jobs, current sessions. */
+  loadSnapshot(now: Date): Promise<Snapshot>;
+  /** Finished jobs of the last 14 days, for duration estimates. */
+  loadJobHistory(now: Date): Promise<Job[]>;
+  /** Every item that is not resolved. */
+  loadItems(): Promise<StoredItem[]>;
+  getItem(id: string): Promise<StoredItem | null>;
+  getSettings(): Promise<Settings>;
+  getSources(): Promise<SourceHealth[]>;
+  getPr(repo: string, number: number): Promise<PullRequest | null>;
+  getRun(id: number): Promise<Run | null>;
+  getJob(id: number): Promise<Job | null>;
+  getSession(id: string): Promise<Session | null>;
+  getRepo(fullName: string): Promise<Repo | null>;
+  findOpenPr(repo: string, branch: string): Promise<PullRequest | null>;
+  listOpenPrsByHead(repo: string, headSha: string): Promise<PullRequest[]>;
+  listRunsByHead(repo: string, headSha: string): Promise<Run[]>;
+
+  applyItemChanges(changes: ItemChanges, now: Date): Promise<void>;
+  patchItem(id: string, patch: ItemPatch): Promise<void>;
+  /**
+   * Takes the right to notify about these items. False when another worker holds it: two
+   * recomputes may run at once, and only one of them may write to Telegram.
+   */
+  claimNotify(itemIds: string[], now: Date): Promise<boolean>;
+  /** Gives the claim back after a failed send, so the next run may retry at once. */
+  releaseNotify(itemIds: string[]): Promise<void>;
+  /** Records a successful send and frees the claim. */
+  markNotified(
+    itemIds: string[],
+    at: Date,
+    messageId: number | null,
+    textByItem: Record<string, string>,
+  ): Promise<void>;
+  patchSettings(patch: Partial<Settings>): Promise<void>;
+
+  upsertSession(session: SessionPatch): Promise<void>;
+  upsertPr(pr: PullRequest): Promise<void>;
+  upsertRun(run: Run): Promise<void>;
+  upsertJob(job: Job): Promise<void>;
+  /** Registers a repository; a repository nobody has seen gets a project named `projectName`. */
+  ensureRepo(fullName: string, defaultBranch: string, projectName: string): Promise<Repo>;
+  renameProject(id: string, name: string): Promise<void>;
+  /** Moves a repository to another project and drops the project it leaves if that is now empty. */
+  moveRepo(fullName: string, projectId: string): Promise<void>;
+
+  touchSource(source: SourceName, at: Date, ok: boolean, note?: string | null): Promise<void>;
+  recordEvent(source: SourceName, deliveryId: string, payload: unknown, now: Date): Promise<'new' | 'duplicate'>;
+  pruneEvents(olderThan: Date): Promise<void>;
+}
+
+export type { DesiredItem, ItemChanges, ItemPatch, StoredItem, Project };
