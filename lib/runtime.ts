@@ -1,8 +1,9 @@
 import { githubApp } from '@/lib/github/app';
 import { recompute, type Notifier, type RecomputeResult } from '@/lib/recompute';
 import { getStore } from '@/lib/store/db';
+import { telegramNotifier } from '@/lib/telegram/client';
 
-/** Used until a Telegram bot is configured; nothing is sent while no chat is bound anyway. */
+/** Used while no Telegram bot is configured; nothing is sent while no chat is bound anyway. */
 const noNotifier: Notifier = {
   send: async () => {
     throw new Error('Telegram не настроен');
@@ -12,17 +13,15 @@ const noNotifier: Notifier = {
   },
 };
 
-let notifierFactory: () => Notifier = () => noNotifier;
-
-/** Lets the Telegram module plug itself in without this file importing it. */
-export function setNotifierFactory(factory: () => Notifier): void {
-  notifierFactory = factory;
+function notifier(): Notifier {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  return token ? telegramNotifier(token) : noNotifier;
 }
 
 export const baseUrl = () => (process.env.PUBLIC_BASE_URL ?? '').replace(/\/$/, '');
 
 export function runRecompute(now: Date = new Date()): Promise<RecomputeResult> {
-  return recompute(getStore(), { now, notifier: notifierFactory(), baseUrl: baseUrl() });
+  return recompute(getStore(), { now, notifier: notifier(), baseUrl: baseUrl() });
 }
 
 export async function enrichPr(repo: string, number: number): Promise<void> {
