@@ -48,7 +48,7 @@ function run(
     const started = Date.now();
     const child = spawn('python3', [SCRIPT], {
       cwd,
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, NO_PROXY: '127.0.0.1', WAREHOUSE_URL: url, ...env } as NodeJS.ProcessEnv,
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, NO_PROXY: '127.0.0.1', WAREHOUSE_URL: url, ...env } as unknown as NodeJS.ProcessEnv,
     });
     let stdout = '';
     let stderr = '';
