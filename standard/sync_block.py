@@ -36,7 +36,8 @@ def block():
         lines.append(line)
     text = "\n".join(lines)
     note = ("<!-- Стандарт Warehouse, версия %s. Не править здесь: блок переписывает workflow "
-            "standard.yml из standard/agents.md репозитория Warehouse. -->" % version)
+            "standard.yml из standard/agents.md репозитория Warehouse, который собирается из "
+            "standard/guides/. -->" % version)
     return "%s\n%s\n\n%s\n\n%s" % (START, note, text, END)
 
 

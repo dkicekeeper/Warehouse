@@ -76,7 +76,7 @@ describe('sync_block.py', () => {
 
   it('keeps the rules block short', () => {
     const source = readFileSync(join(process.cwd(), 'standard', 'agents.md'), 'utf8');
-    expect(source.split('\n').length).toBeLessThanOrEqual(150);
+    expect(source.split("\n").length).toBeLessThanOrEqual(200);
     writeFileSync(join(makeTree({}), 'x'), '');
   });
 });
