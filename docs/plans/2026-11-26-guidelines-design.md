@@ -1,8 +1,9 @@
 ---
-status: draft
+status: approved
 kind: design
 created: 2026-11-26
-updated: 2026-11-26
+updated: 2026-11-27
+approved: 2026-11-27
 tasks: [2026-11-26-guidelines]
 ---
 # Гайдлайны: один свод правил для владельца и агентов

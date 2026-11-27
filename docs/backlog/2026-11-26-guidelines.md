@@ -1,12 +1,12 @@
 ---
-status: blocked
+status: in-progress
 type: feature
 priority: 2
 size: l
 created: 2026-11-26
-updated: 2026-11-26
-needs-owner: "одобрить дизайн гайдлайнов"
-plan: plans/2026-11-26-guidelines-design.md
+updated: 2026-11-27
+plan: plans/2026-11-27-guidelines.md
+branch: claude/wizardly-ptolemy-l81oa3
 ---
 # Гайдлайны: один свод правил для владельца и агентов
 
