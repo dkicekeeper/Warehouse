@@ -26,6 +26,8 @@ export interface GuideRule {
   agent: boolean;
 }
 
+export type GuideBlock = { kind: 'text'; text: string } | { kind: 'rule'; rule: GuideRule };
+
 export interface Guide {
   slug: string;
   title: string;
@@ -34,6 +36,8 @@ export interface Guide {
   /** Everything between the title and the agent part, as Markdown, for the page. */
   body: string;
   rules: GuideRule[];
+  /** The body in reading order: Markdown between rules, and each rule in its place. */
+  blocks: GuideBlock[];
   /** The «Коротко для агента» section without its heading. */
   agentPart: string;
 }
@@ -85,24 +89,42 @@ export function parseGuide(slug: string, markdown: string): Guide {
   const intro = (rest.split(/\n\s*\n/)[0] ?? '').trim();
 
   const rules: GuideRule[] = [];
+  const blocks: GuideBlock[] = [];
+  let text: string[] = [];
   let open: { id: string; title: string; lines: string[] } | null = null;
+  const flushText = () => {
+    const t = text.join('\n').trim();
+    if (t) blocks.push({ kind: 'text', text: t });
+    text = [];
+  };
+  const closeRule = () => {
+    if (!open) return;
+    const rule = ruleFrom(open.id, open.title, open.lines);
+    rules.push(rule);
+    blocks.push({ kind: 'rule', rule });
+    open = null;
+  };
   let inCode = false;
   for (const line of bodyLines) {
     if (line.startsWith('```')) inCode = !inCode;
     const m = inCode ? null : RULE_HEADING.exec(line);
     if (m) {
-      if (open) rules.push(ruleFrom(open.id, open.title, open.lines));
+      closeRule();
+      flushText();
       open = { id: m[1] as string, title: (m[2] as string).trim(), lines: [] };
     } else if (!inCode && /^#{1,3} /.test(line)) {
-      if (open) rules.push(ruleFrom(open.id, open.title, open.lines));
-      open = null;
+      closeRule();
+      text.push(line);
     } else if (open) {
       open.lines.push(line);
+    } else {
+      text.push(line);
     }
   }
-  if (open) rules.push(ruleFrom(open.id, open.title, open.lines));
+  closeRule();
+  flushText();
 
-  return { slug, title, intro, body: rest, rules, agentPart };
+  return { slug, title, intro, body: rest, rules, blocks, agentPart };
 }
 
 const NEW_FILE = 'https://github.com/dkicekeeper/Warehouse/new/main';

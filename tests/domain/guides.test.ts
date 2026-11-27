@@ -59,6 +59,14 @@ describe('parseGuide', () => {
     expect(g.rules[1]).toMatchObject({ id: 'DOC-2', why: null, checks: [], agent: false });
   });
 
+  it('lays the body out in order: text, then each rule in its place, for the page', () => {
+    expect(g.blocks.map((b) => (b.kind === 'rule' ? b.rule.id : b.text))).toEqual([
+      'Как это устроено: в `docs/` только актуальное.\n\n## Дерево',
+      'DOC-1',
+      'DOC-2',
+    ]);
+  });
+
   it('keeps the body without the title and the agent part, for the page', () => {
     expect(g.body).toContain('### DOC-1. Новых папок не заводят');
     expect(g.body).not.toContain('Коротко для агента');
