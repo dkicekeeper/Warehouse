@@ -1,3 +1,4 @@
+import { isStale } from '@/lib/domain/queue';
 import { macHistory } from '@/lib/domain/mac-history';
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
@@ -114,6 +115,12 @@ export async function handleCancelRun(idParam: string, deps: OwnerDeps): Promise
   const run = await deps.store.getRun(Number(idParam));
   if (!run) return empty(404);
   if (run.status === 'completed') return empty(409);
+  // A build that is running and nothing newer replaces is not the owner's to stop from the page:
+  // only a waiting build or one a newer push made stale gets the button, and so the API.
+  if (run.status === 'in_progress') {
+    const { runs } = await deps.store.loadSnapshot(deps.now);
+    if (!isStale(run, runs)) return empty(409);
+  }
   if (!deps.github) return json({ error: 'Приложение GitHub не настроено' }, 503);
   try {
     await deps.github.cancelRun(run.repo, run.id);
