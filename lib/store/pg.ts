@@ -583,6 +583,10 @@ export class PgStore implements Store {
     return rows.length > 0 ? 'new' : 'duplicate';
   }
 
+  async forgetEvent(source: SourceName, deliveryId: string): Promise<void> {
+    await this.sql.query('delete from events where source = $1 and delivery_id = $2', [source, deliveryId]);
+  }
+
   async pruneEvents(olderThan: Date): Promise<void> {
     await this.sql.query('delete from events where received_at < $1::timestamptz', [ts(olderThan)]);
   }

@@ -125,4 +125,16 @@ describe('GitHub webhook', () => {
     expect(await res.text()).toBe('');
     expect((await store.getSources())[0]).toMatchObject({ source: 'github_webhook', lastOkAt: null, note: 'db down' });
   });
+
+  it('a delivery whose apply failed is applied when GitHub retries it, not taken for a duplicate', async () => {
+    const broken = Object.create(store) as PgStore;
+    broken.upsertPr = async () => {
+      throw new Error('db down');
+    };
+    expect((await handle(request(pullRequestEvent('opened')), { store: broken })).status).toBe(500);
+    expect(await store.getPr(REPO, 3)).toBeNull();
+    // GitHub redelivers with the same delivery id.
+    expect((await handle(request(pullRequestEvent('opened')))).status).toBe(200);
+    expect(await store.getPr(REPO, 3)).not.toBeNull();
+  });
 });

@@ -86,6 +86,8 @@ export interface Store {
 
   touchSource(source: SourceName, at: Date, ok: boolean, note?: string | null): Promise<void>;
   recordEvent(source: SourceName, deliveryId: string, payload: unknown, now: Date): Promise<'new' | 'duplicate'>;
+  /** Forgets a delivery whose apply failed, so the sender's retry is applied, not dropped as a duplicate. */
+  forgetEvent(source: SourceName, deliveryId: string): Promise<void>;
   pruneEvents(olderThan: Date): Promise<void>;
 }
 

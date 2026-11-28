@@ -36,11 +36,15 @@ export async function handleGithubWebhook(req: Request, deps: GithubWebhookDeps)
     return empty(400);
   }
 
+  let recorded = false;
   try {
     if ((await deps.store.recordEvent('github_webhook', delivery, payload, deps.now)) === 'duplicate') return empty(200);
+    recorded = true;
     await applyGithubEvent(deps.store, event, payload, deps.now);
     await deps.store.touchSource('github_webhook', deps.now, true);
   } catch (err) {
+    // The 500 makes GitHub retry with the same delivery id: that retry must be applied, not dropped.
+    if (recorded) await deps.store.forgetEvent('github_webhook', delivery).catch(() => {});
     await deps.store
       .touchSource('github_webhook', deps.now, false, err instanceof Error ? err.message : 'ошибка обработки')
       .catch(() => {});
