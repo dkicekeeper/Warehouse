@@ -207,12 +207,31 @@ alter table repos add column github_id bigint;
 create unique index repos_github_id on repos (github_id) where github_id is not null
 `;
 
+/** Metrics: one row per app, source, metric and day; collecting a day again replaces it. */
+const METRICS = `
+create table metric_days (
+  app text not null,
+  source text not null,
+  metric text not null,
+  day date not null,
+  value numeric not null,
+  unit text not null,
+  primary key (app, source, metric, day)
+);
+create index metric_days_day on metric_days (day);
+alter table metric_days enable row level security;
+alter table settings add column metrics_trial_cost_limit numeric not null default 15;
+alter table settings add column metrics_in_digest boolean not null default true;
+alter table settings add column revenuecat_projects text not null default '{}'
+`;
+
 export const MIGRATIONS: Migration[] = [
   { name: '0001_schema', sql: SCHEMA },
   { name: '0002_seed_projects', sql: SEED_PROJECTS },
   { name: '0003_sessions_valid_after', sql: SESSIONS_VALID_AFTER },
   { name: '0004_project_docs', sql: PROJECT_DOCS },
   { name: '0005_repo_github_id', sql: REPO_GITHUB_ID },
+  { name: '0006_metrics', sql: METRICS },
 ];
 
 const TAG = '$wh_migration$';

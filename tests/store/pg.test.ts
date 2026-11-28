@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DesiredItem } from '@/lib/domain/attention';
 import { DEFAULT_SETTINGS } from '@/lib/domain/types';
+import type { MetricDay } from '@/lib/domain/metrics';
 import type { PgStore, Sql } from '@/lib/store/pg';
 import { testStore } from '../helpers/db';
 import { NOW, job, minutesAgo, minutesFromNow, pr, run, session } from '../helpers/factories';
@@ -304,5 +305,55 @@ describe('sources and events', () => {
     expect(await store.recordEvent('session_hook', 'd1', {}, NOW)).toBe('new');
     await store.pruneEvents(minutesAgo(14 * 1440));
     expect(await store.recordEvent('github_webhook', 'd1', {}, NOW)).toBe('new');
+  });
+});
+
+describe('metric days', () => {
+  const day = (over: Partial<MetricDay> = {}): MetricDay => ({
+    app: '6761530361', source: 'appstore_sales', metric: 'installs', day: '2026-11-20', value: 5, unit: 'count', ...over,
+  });
+
+  it('are stored and read back, numbers as numbers', async () => {
+    await store.upsertMetricDays([day(), day({ source: 'apple_ads', metric: 'ad_spend', value: 9.37, unit: 'USD' })]);
+    const rows = await store.loadMetricDays('2026-11-01');
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.metric === 'ad_spend')).toEqual(day({ source: 'apple_ads', metric: 'ad_spend', value: 9.37, unit: 'USD' }));
+  });
+
+  it('collecting the same day again replaces the value instead of adding a row', async () => {
+    await store.upsertMetricDays([day()]);
+    await store.upsertMetricDays([day({ value: 7 })]);
+    expect(await store.loadMetricDays('2026-11-01')).toEqual([day({ value: 7 })]);
+  });
+
+  it('reads from the given day on', async () => {
+    await store.upsertMetricDays([day({ day: '2026-10-31' }), day()]);
+    expect((await store.loadMetricDays('2026-11-01')).map((r) => r.day)).toEqual(['2026-11-20']);
+  });
+
+  it('knows the first and last day each source has', async () => {
+    await store.upsertMetricDays([day({ day: '2026-10-01' }), day({ day: '2026-11-24' }), day({ source: 'revenuecat', app: 'rc:x', metric: 'trials_new', day: '2026-11-02' })]);
+    expect(await store.metricCoverage('appstore_sales')).toEqual({ earliest: '2026-10-01', latest: '2026-11-24' });
+    expect(await store.metricCoverage('apple_ads')).toEqual({ earliest: null, latest: null });
+  });
+
+  it('an empty batch is fine', async () => {
+    await store.upsertMetricDays([]);
+    expect(await store.loadMetricDays('2026-01-01')).toEqual([]);
+  });
+});
+
+describe('metric settings', () => {
+  it('default to a $15 trial limit, numbers in the digest and no RevenueCat projects', async () => {
+    expect(await store.getSettings()).toMatchObject({ metricsTrialCostLimit: 15, metricsInDigest: true, revenuecatProjects: {} });
+  });
+
+  it('can be changed', async () => {
+    await store.patchSettings({ metricsTrialCostLimit: 12.5, metricsInDigest: false, revenuecatProjects: { p1: { name: 'Tenra', projectId: null } } });
+    expect(await store.getSettings()).toMatchObject({
+      metricsTrialCostLimit: 12.5,
+      metricsInDigest: false,
+      revenuecatProjects: { p1: { name: 'Tenra', projectId: null } },
+    });
   });
 });

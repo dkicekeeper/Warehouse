@@ -1,3 +1,4 @@
+import type { RevenueCatProjects } from './metrics';
 // Shared domain types. Everything in lib/domain is pure: no network, no database, no clock
 // other than the `now` passed in.
 
@@ -98,6 +99,12 @@ export interface Settings {
   telegramLinkCode: { code: string; expiresAt: Date } | null;
   /** Set by sign-out: sessions issued before this moment are no longer accepted. */
   sessionsValidAfter: Date | null;
+  /** A trial dearer than this over the last 7 days is a note (in the ad spend's currency). */
+  metricsTrialCostLimit: number;
+  /** The morning digest carries yesterday's numbers, and goes out for them alone. */
+  metricsInDigest: boolean;
+  /** RevenueCat projects the keys see, and the Warehouse project chosen for each. */
+  revenuecatProjects: RevenueCatProjects;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -112,6 +119,9 @@ export const DEFAULT_SETTINGS: Settings = {
   lastDigestAt: null,
   telegramLinkCode: null,
   sessionsValidAfter: null,
+  metricsTrialCostLimit: 15,
+  metricsInDigest: true,
+  revenuecatProjects: {},
 };
 
 export interface Snapshot {

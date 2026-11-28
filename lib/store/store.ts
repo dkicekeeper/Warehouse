@@ -1,9 +1,17 @@
+import type { MetricDay, MetricSource } from '@/lib/domain/metrics';
 import type { DesiredItem } from '@/lib/domain/attention';
 import type { ItemChanges, ItemPatch, StoredItem } from '@/lib/domain/items';
 import type { ProjectDoc } from '@/lib/domain/docs';
 import type { Job, Project, PullRequest, Repo, Run, Session, Settings, Snapshot } from '@/lib/domain/types';
 
-export type SourceName = 'github_webhook' | 'github_resync' | 'session_hook' | 'reconcile' | 'heartbeat' | 'docs_sync';
+export type SourceName =
+  | 'github_webhook'
+  | 'github_resync'
+  | 'session_hook'
+  | 'reconcile'
+  | 'heartbeat'
+  | 'docs_sync'
+  | MetricSource;
 
 export type PrPatch = Partial<Pick<PullRequest, 'checks' | 'headSha' | 'mergeable' | 'sessionId'>>;
 
@@ -103,6 +111,12 @@ export interface Store {
   listDocsState(): Promise<DocsState[]>;
 
   touchSource(source: SourceName, at: Date, ok: boolean, note?: string | null): Promise<void>;
+  /** Writes days of metrics; a day already stored for the same app, source and metric is replaced. */
+  upsertMetricDays(rows: MetricDay[]): Promise<void>;
+  /** Every stored day from `from` (YYYY-MM-DD) on. */
+  loadMetricDays(from: string): Promise<MetricDay[]>;
+  /** The first and last day a source has data for. */
+  metricCoverage(source: MetricSource): Promise<{ earliest: string | null; latest: string | null }>;
   recordEvent(source: SourceName, deliveryId: string, payload: unknown, now: Date): Promise<'new' | 'duplicate'>;
   /** Forgets a delivery whose apply failed, so the sender's retry is applied, not dropped as a duplicate. */
   forgetEvent(source: SourceName, deliveryId: string): Promise<void>;

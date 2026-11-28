@@ -8,7 +8,7 @@ const SCHEMA = MIGRATIONS.filter((m) => !m.name.includes('seed'))
   .map((m) => m.sql)
   .join(';\n');
 
-const TABLES = ['project_docs', 'items', 'events', 'sources', 'jobs', 'runs', 'pull_requests', 'sessions', 'repos', 'projects', 'settings'];
+const TABLES = ['metric_days', 'project_docs', 'items', 'events', 'sources', 'jobs', 'runs', 'pull_requests', 'sessions', 'repos', 'projects', 'settings'];
 const RESET = `truncate ${TABLES.join(', ')} cascade; insert into settings (id) values (1);`;
 
 let shared: { sql: Sql; exec: (text: string) => Promise<unknown> } | null = null;

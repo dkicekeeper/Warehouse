@@ -17,6 +17,7 @@ import {
 } from '@/lib/domain/types';
 import type { DocsState, PrPatch, SessionPatch, SourceHealth, SourceName, Store } from './store';
 import type { DocKind, ProjectDoc } from '@/lib/domain/docs';
+import type { MetricDay, MetricName, MetricSource } from '@/lib/domain/metrics';
 
 /** The one thing the store needs from a Postgres driver. */
 export interface Sql {
@@ -204,6 +205,9 @@ function settingsColumns(p: Partial<Settings>): Record<string, unknown> {
   if ('telegramChatId' in p) c.telegram_chat_id = p.telegramChatId;
   if ('lastDigestAt' in p) c.last_digest_at = p.lastDigestAt ?? null;
   if ('sessionsValidAfter' in p) c.sessions_valid_after = p.sessionsValidAfter ?? null;
+  if ('metricsTrialCostLimit' in p) c.metrics_trial_cost_limit = p.metricsTrialCostLimit;
+  if ('metricsInDigest' in p) c.metrics_in_digest = p.metricsInDigest;
+  if ('revenuecatProjects' in p) c.revenuecat_projects = JSON.stringify(p.revenuecatProjects ?? {});
   if ('telegramLinkCode' in p) {
     c.telegram_link_code = p.telegramLinkCode?.code ?? null;
     c.telegram_link_expires_at = p.telegramLinkCode?.expiresAt ?? null;
@@ -212,6 +216,16 @@ function settingsColumns(p: Partial<Settings>): Record<string, unknown> {
 }
 
 const IDS = 'select jsonb_array_elements_text($1::text::jsonb)';
+
+/** The stored map of RevenueCat projects; anything unreadable is no projects, not a failure. */
+function parseRcProjects(v: unknown): Settings['revenuecatProjects'] {
+  try {
+    const parsed: unknown = typeof v === 'string' ? JSON.parse(v) : v;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Settings['revenuecatProjects']) : {};
+  } catch {
+    return {};
+  }
+}
 
 export class PgStore implements Store {
   constructor(private readonly sql: Sql) {}
@@ -291,7 +305,50 @@ export class PgStore implements Store {
         ? { code: String(r.telegram_link_code), expiresAt: must(r.telegram_link_expires_at) }
         : null,
       sessionsValidAfter: date(r.sessions_valid_after),
+      metricsTrialCostLimit: r.metrics_trial_cost_limit === undefined ? DEFAULT_SETTINGS.metricsTrialCostLimit : num(r.metrics_trial_cost_limit),
+      metricsInDigest: r.metrics_in_digest === undefined ? DEFAULT_SETTINGS.metricsInDigest : Boolean(r.metrics_in_digest),
+      revenuecatProjects: parseRcProjects(r.revenuecat_projects),
     };
+  }
+
+  async upsertMetricDays(rows: MetricDay[]): Promise<void> {
+    // A batch is a few thousand rows at most (180 days of a dozen metrics); sent as one JSON
+    // parameter in slices so no statement grows without bound.
+    for (let i = 0; i < rows.length; i += 2000) {
+      await this.sql.query(
+        `insert into metric_days (app, source, metric, day, value, unit)
+         select app, source, metric, day::date, value::numeric, unit
+           from jsonb_to_recordset($1::text::jsonb)
+             as t (app text, source text, metric text, day text, value text, unit text)
+         on conflict (app, source, metric, day) do update set value = excluded.value, unit = excluded.unit`,
+        [JSON.stringify(rows.slice(i, i + 2000).map((r) => ({ ...r, value: String(r.value) })))],
+      );
+    }
+  }
+
+  async loadMetricDays(from: string): Promise<MetricDay[]> {
+    const rows = await this.sql.query(
+      `select app, source, metric, to_char(day, 'YYYY-MM-DD') as day, value::text as value, unit
+         from metric_days where day >= $1::date order by day, app, source, metric`,
+      [from],
+    );
+    return rows.map((r) => ({
+      app: String(r.app),
+      source: r.source as MetricSource,
+      metric: r.metric as MetricName,
+      day: String(r.day),
+      value: Number(r.value),
+      unit: String(r.unit),
+    }));
+  }
+
+  async metricCoverage(source: MetricSource): Promise<{ earliest: string | null; latest: string | null }> {
+    const [r] = await this.sql.query(
+      `select to_char(min(day), 'YYYY-MM-DD') as earliest, to_char(max(day), 'YYYY-MM-DD') as latest
+         from metric_days where source = $1`,
+      [source],
+    );
+    return { earliest: str(r?.earliest), latest: str(r?.latest) };
   }
 
   async getSources(): Promise<SourceHealth[]> {
