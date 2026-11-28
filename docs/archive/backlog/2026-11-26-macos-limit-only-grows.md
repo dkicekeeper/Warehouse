@@ -1,10 +1,12 @@
 ---
-status: ready
+status: done
 type: bug
 priority: 2
 size: m
 created: 2026-11-26
-updated: 2026-11-26
+updated: 2026-11-28
+branch: claude/wizardly-ptolemy-l81oa3
+pr: 14
 ---
 # Выученный лимит macOS только растёт
 

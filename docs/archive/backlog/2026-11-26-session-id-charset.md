@@ -1,10 +1,12 @@
 ---
-status: ready
+status: done
 type: chore
 priority: 2
 size: s
 created: 2026-11-26
-updated: 2026-11-26
+updated: 2026-11-28
+branch: claude/wizardly-ptolemy-l81oa3
+pr: 14
 ---
 # Ограничить набор символов session_id
 
