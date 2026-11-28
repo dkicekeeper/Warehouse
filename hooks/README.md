@@ -34,14 +34,17 @@
 
 ## Уровень окружения: сессия с несколькими репозиториями
 
-Сессия, у которой несколько репозиториев, работает из общей папки над ними (`/home/user`). Своих
-настроек у этой папки нет, и хук репозитория там не регистрируется. Поэтому облачное окружение
-ставит хук для пользователя своим скриптом настройки:
+Облачная сессия работает из общей папки над репозиториями (`/home/user`), даже когда репозиторий
+один. Своих настроек у этой папки нет, и хук из `.claude/settings.json` репозитория там не
+регистрируется. Поэтому каждое облачное окружение (Settings → Environments) ставит хук для
+пользователя своим скриптом настройки. Скрипт берёт свежую копию хука из репозиториев сессии, а
+если её нет, скачивает с GitHub:
 
 ```bash
 mkdir -p "$HOME/.claude/hooks"
 H="$HOME/.claude/hooks/warehouse-report.py"
-if [ -f Warehouse/hooks/warehouse-report.py ]; then cp Warehouse/hooks/warehouse-report.py "$H"
+SRC=$(grep -l -- '--install' Warehouse/hooks/warehouse-report.py */.claude/hooks/warehouse-report.py 2>/dev/null | head -1)
+if [ -n "$SRC" ]; then cp "$SRC" "$H"
 else curl -fsSL --max-time 20 -o "$H" https://raw.githubusercontent.com/dkicekeeper/Warehouse/main/hooks/warehouse-report.py || true; fi
 if [ -f "$H" ]; then python3 "$H" --install || true; fi
 ```
@@ -50,6 +53,9 @@ if [ -f "$H" ]; then python3 "$H" --install || true; fi
 повторяясь. Из папки над репозиториями хук отчитывается за тот, где работали последним (по времени
 `.git/index` и `.git/logs/HEAD`). Если в одном ходе сработали обе копии (репозитория и
 пользователя), отчёт уходит один раз.
+
+Окружению с ограниченной сетью нужны ещё разрешённый хост `warehouse-henna-pi.vercel.app` и сетевой
+секрет для него (заголовок `Authorization`, префикс `Bearer`, значение — `REPORT_TOKEN` из Vercel).
 
 Токен в репозиторий не кладётся. В облачных сессиях его подставляет прокси окружения (сетевой
 секрет для хоста сервиса, заголовок `Authorization`, префикс `Bearer`); для локальных сессий —
