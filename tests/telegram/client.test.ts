@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { telegramNotifier } from '@/lib/telegram/client';
+import { MessageGone, telegramNotifier } from '@/lib/telegram/client';
 
 function fake(responses: (() => Response)[]) {
   const calls: { url: string; body: Record<string, unknown> }[] = [];
@@ -36,6 +36,11 @@ describe('telegramNotifier', () => {
   it('treats «message is not modified» as a successful edit', async () => {
     const f = fake([json({ ok: false, error_code: 400, description: 'Bad Request: message is not modified' }, 400)]);
     await expect(telegramNotifier('t', f.impl).edit('42', 1, 'x')).resolves.toBeUndefined();
+  });
+
+  it('says the message is gone when the owner deleted it', async () => {
+    const f = fake([json({ ok: false, error_code: 400, description: 'Bad Request: message to edit not found' }, 400)]);
+    await expect(telegramNotifier('t', f.impl).edit('42', 1, 'x')).rejects.toBeInstanceOf(MessageGone);
   });
 
   it('throws with Telegram’s own description on 429 and 403', async () => {

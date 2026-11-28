@@ -3,6 +3,7 @@ import { reconcileItems } from '@/lib/domain/items';
 import { planNotifications } from '@/lib/domain/notify';
 import { observeLimit } from '@/lib/domain/queue';
 import type { Store } from '@/lib/store/store';
+import { MessageGone } from '@/lib/telegram/client';
 
 export interface Notifier {
   send(chatId: string, html: string): Promise<{ messageId: number }>;
@@ -44,7 +45,12 @@ export async function recompute(
         await notifier.edit(chatId, action.messageId, action.text);
         await store.markNotified([action.itemId], now, action.messageId, { [action.itemId]: action.text });
         result.edited++;
-      } catch {
+      } catch (err) {
+        if (err instanceof MessageGone) {
+          // The owner deleted it: keep the item, forget the message, so no tick edits it again.
+          await store.markNotified([action.itemId], now, null, { [action.itemId]: action.text }).catch(() => {});
+          continue;
+        }
         result.failed++;
       }
       continue;

@@ -2,6 +2,13 @@ import type { Notifier } from '@/lib/recompute';
 
 const API = 'https://api.telegram.org';
 
+/** The message to edit no longer exists (the owner deleted it): there is nothing left to edit. */
+export class MessageGone extends Error {
+  constructor() {
+    super('Telegram: сообщения больше нет');
+  }
+}
+
 interface TgResponse {
   ok?: boolean;
   description?: string;
@@ -57,6 +64,7 @@ export function telegramNotifier(token: string, fetchImpl: typeof fetch = fetch)
         });
       } catch (err) {
         if (err instanceof Error && /message is not modified/i.test(err.message)) return;
+        if (err instanceof Error && /message to edit not found/i.test(err.message)) throw new MessageGone();
         throw err;
       }
     },
