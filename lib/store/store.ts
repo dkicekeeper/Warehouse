@@ -5,6 +5,8 @@ import type { Job, Project, PullRequest, Repo, Run, Session, Settings, Snapshot 
 
 export type SourceName = 'github_webhook' | 'github_resync' | 'session_hook' | 'reconcile' | 'heartbeat' | 'docs_sync';
 
+export type PrPatch = Partial<Pick<PullRequest, 'checks' | 'headSha' | 'mergeable' | 'sessionId'>>;
+
 export interface SourceHealth {
   source: SourceName;
   lastOkAt: Date | null;
@@ -67,6 +69,12 @@ export interface Store {
    */
   adoptSessionsFromPrs(): Promise<void>;
   upsertPr(pr: PullRequest): Promise<void>;
+  /**
+   * Changes only the given fields of a stored PR. Writers that know one part of a PR (its checks,
+   * a new head after a push, the session from a commit trailer) use this, so two of them at once
+   * never overwrite each other's fields with a stale copy.
+   */
+  patchPr(repo: string, number: number, patch: PrPatch): Promise<void>;
   upsertRun(run: Run): Promise<void>;
   upsertJob(job: Job): Promise<void>;
   /** Registers a repository; a repository nobody has seen gets a project named `projectName`. */

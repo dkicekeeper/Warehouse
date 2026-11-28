@@ -149,6 +149,23 @@ describe('pull requests, runs and jobs', () => {
     expect(await store.getPr('o/r', 999)).toBeNull();
   });
 
+  it('two writers of one PR keep each other\'s fields: a patch touches only its own', async () => {
+    const p = pr({ number: 7, checks: 'pending', sessionId: null });
+    await store.upsertPr(p);
+    // Both writers read the row before either wrote: each holds the stale copy.
+    await store.patchPr('o/r', 7, { checks: 'success' });
+    await store.patchPr('o/r', 7, { sessionId: 'session_abc' });
+    expect(await store.getPr('o/r', 7)).toMatchObject({ checks: 'success', sessionId: 'session_abc', title: p.title });
+  });
+
+  it('a full description without a session keeps the session found meanwhile', async () => {
+    const p = pr({ number: 8, sessionId: null });
+    await store.upsertPr(p);
+    await store.patchPr('o/r', 8, { sessionId: 'session_abc' });
+    await store.upsertPr({ ...p, title: 'renamed' });
+    expect(await store.getPr('o/r', 8)).toMatchObject({ title: 'renamed', sessionId: 'session_abc' });
+  });
+
   it('upsert overwrites', async () => {
     const p = pr({ number: 3 });
     await store.upsertPr(p);

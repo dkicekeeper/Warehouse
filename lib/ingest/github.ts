@@ -151,7 +151,7 @@ async function refreshPrChecks(store: Store, repo: string, headSha: string): Pro
   if (prs.length === 0) return;
   const checks = checksFromRuns(await store.listRunsByHead(repo, headSha));
   for (const pr of prs) {
-    if (pr.checks !== checks) await store.upsertPr({ ...pr, checks });
+    if (pr.checks !== checks) await store.patchPr(repo, pr.number, { checks });
   }
 }
 
@@ -219,7 +219,7 @@ export async function applyGithubEvent(store: Store, event: string, payload: unk
       const pr = await store.findOpenPr(repo, branch);
       if (!pr || pr.headSha === push.data.after) return;
       // The pull_request event with the details follows; until then nothing about the new head is known.
-      await store.upsertPr({ ...pr, headSha: push.data.after, mergeable: null, checks: 'pending' });
+      await store.patchPr(repo, pr.number, { headSha: push.data.after, mergeable: null, checks: 'pending' });
       return;
     }
     default:

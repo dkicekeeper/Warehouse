@@ -15,7 +15,7 @@ import {
   type Settings,
   type Snapshot,
 } from '@/lib/domain/types';
-import type { DocsState, SessionPatch, SourceHealth, SourceName, Store } from './store';
+import type { DocsState, PrPatch, SessionPatch, SourceHealth, SourceName, Store } from './store';
 import type { DocKind, ProjectDoc } from '@/lib/domain/docs';
 
 /** The one thing the store needs from a Postgres driver. */
@@ -451,9 +451,23 @@ export class PgStore implements Store {
        on conflict (repo, number) do update set
          title = excluded.title, branch = excluded.branch, head_sha = excluded.head_sha, state = excluded.state,
          draft = excluded.draft, mergeable = excluded.mergeable, checks = excluded.checks,
-         opened_at = excluded.opened_at, updated_at = excluded.updated_at, session_id = excluded.session_id`,
+         opened_at = excluded.opened_at, updated_at = excluded.updated_at,
+         -- A session found from a commit trailer meanwhile is never lost to a description without one.
+         session_id = coalesce(excluded.session_id, pull_requests.session_id)`,
       [p.repo, p.number, p.title, p.branch, p.headSha, p.state, p.draft, p.mergeable, p.checks, ts(p.openedAt), ts(p.updatedAt), p.sessionId],
     );
+  }
+
+  async patchPr(repo: string, number: number, patch: PrPatch): Promise<void> {
+    const columns: Record<keyof PrPatch, string> = { checks: 'checks', headSha: 'head_sha', mergeable: 'mergeable', sessionId: 'session_id' };
+    const keys = (Object.keys(patch) as (keyof PrPatch)[]).filter((k) => k in columns);
+    if (keys.length === 0) return;
+    const sets = keys.map((k, i) => columns[k] + ' = $' + String(i + 3));
+    await this.sql.query('update pull_requests set ' + sets.join(', ') + ' where repo = $1 and number = $2', [
+      repo,
+      number,
+      ...keys.map((k) => patch[k] ?? null),
+    ]);
   }
 
   async upsertRun(r: Run): Promise<void> {
