@@ -1,0 +1,8 @@
+{
+  "result": [
+    { "id": 101, "name": "KZ-Competitor", "adamId": 6761530361 },
+    { "id": 102, "name": "KZ-Category", "adamId": 6761530361 },
+    { "id": 103, "name": "KZ-Dalada", "adamId": 6817603558 }
+  ],
+  "pagination": { "totalCount": 3, "offset": 0 }
+}

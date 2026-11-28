@@ -1,0 +1,26 @@
+{
+  "result": {
+    "rows": [
+      {
+        "metadata": { "id": 101, "name": "KZ-Competitor" },
+        "granularMetrics": [
+          { "date": "2026-11-20", "impressions": 900, "taps": 40, "tapInstalls": 15, "viewInstalls": 1, "localSpend": { "amount": "5.25", "currency": "USD" } },
+          { "date": "2026-11-21", "impressions": 800, "taps": 30, "tapInstalls": 10, "viewInstalls": 0, "localSpend": { "amount": "4.00", "currency": "USD" } }
+        ]
+      },
+      {
+        "metadata": { "id": 102, "name": "KZ-Category" },
+        "granularMetrics": [
+          { "date": "2026-11-20", "impressions": 100, "taps": 10, "tapInstalls": 4, "viewInstalls": 0, "localSpend": { "amount": "3.75", "currency": "USD" } }
+        ]
+      },
+      {
+        "metadata": { "id": 103, "name": "KZ-Dalada" },
+        "granularMetrics": [
+          { "date": "2026-11-20", "impressions": 50, "taps": 2, "tapInstalls": 1, "viewInstalls": 0, "localSpend": { "amount": "1.00", "currency": "USD" } }
+        ]
+      }
+    ]
+  },
+  "pagination": { "totalCount": 3, "offset": 0 }
+}
