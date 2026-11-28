@@ -1,6 +1,10 @@
 import type { Job, Run, Session, Settings } from './types';
 
 const MINUTE = 60_000;
+/** A wait this long is a wait for a free runner, not for one to boot. */
+const WAITED = 5 * MINUTE;
+/** A runner freed this shortly before a waiting job started is the one that job took. */
+const FREED = 3 * MINUTE;
 const HISTORY_SIZE = 10;
 
 /** Jobs that take a slot in the account-wide macOS queue. Linux jobs never wait for one. */
@@ -49,21 +53,31 @@ export function medianDurationMin(history: Job[]): number | null {
  * the live jobs and from the finished jobs of the last days (`history`), so a limit GitHub lowers
  * shows up within that window; with no waiting seen in it, what was known stays.
  */
-export function observeLimit(live: Job[], history: Job[], prev: number | null): number | null {
+export function observeLimit(live: Job[], history: Job[], prev: number | null, now: Date): number | null {
   const mac = live.filter((j) => isMacJob(j.labels));
-  const liveRunning = mac.filter((j) => j.status === 'in_progress').length;
-  const liveSeen = mac.some((j) => j.status === 'queued') && liveRunning > 0 ? liveRunning : 0;
+  const liveRunning = mac.filter((j) => j.status === 'in_progress');
+  // A job queued a minute or two is a runner booting, not the limit: only a long wait counts.
+  const liveWaits = mac.some((j) => j.status === 'queued' && now.getTime() - j.createdAt.getTime() >= WAITED);
+  const liveSeen = liveWaits ? liveRunning.length : 0;
 
   const done = history.filter((j) => isMacJob(j.labels) && j.startedAt && j.completedAt);
+  const startOf = (j: Job) => (j.startedAt as Date).getTime();
+  const endOf = (j: Job) => (j.completedAt as Date).getTime();
   let pastSeen = 0;
   for (const w of done) {
-    const started = (w.startedAt as Date).getTime();
-    // A job that waited at least a minute: what ran just before it started was the account's fill.
-    if (started - w.createdAt.getTime() < MINUTE) continue;
-    const t = started - 1;
-    const running = done.filter(
-      (j) => j !== w && (j.startedAt as Date).getTime() <= t && (j.completedAt as Date).getTime() > t,
-    ).length;
+    const started = startOf(w);
+    if (started - w.createdAt.getTime() < WAITED) continue;
+    // The runner it got was freed by the last mac job to finish shortly before it started; the
+    // account's fill is what ran at that moment, the finishing job included.
+    let freed = -Infinity;
+    for (const j of done) {
+      const end = endOf(j);
+      if (j !== w && end <= started && end >= started - FREED && end > freed) freed = end;
+    }
+    if (freed === -Infinity) continue;
+    const running =
+      done.filter((j) => j !== w && startOf(j) < freed && endOf(j) >= freed).length +
+      liveRunning.filter((j) => j.startedAt && j.startedAt.getTime() < freed).length;
     pastSeen = Math.max(pastSeen, running);
   }
 

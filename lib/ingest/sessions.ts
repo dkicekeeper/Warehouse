@@ -31,7 +31,7 @@ export const ReconcileBatch = z.object({
   sessions: z
     .array(
       z.object({
-        session_id: SessionId,
+        session_id: z.string().max(200),
         title: z.string().max(500).nullable(),
         archived: z.boolean(),
         bucket: z.enum(['working', 'blocked', 'review_ready', 'completed', 'failed']),
@@ -43,7 +43,9 @@ export const ReconcileBatch = z.object({
         updated_at: z.string().datetime({ offset: true }),
       }),
     )
-    .max(500),
+    .max(500)
+    // One odd id in the list must not cost the other sessions their hour: it alone is dropped.
+    .transform((list) => list.filter((s) => SessionId.safeParse(s.session_id).success)),
 });
 export type ReconcileBatch = z.infer<typeof ReconcileBatch>;
 
@@ -108,5 +110,6 @@ export async function linkSessionToPr(store: Store, sessionId: string): Promise<
   const session = await store.getSession(sessionId);
   if (!session?.repo || !session.branch) return;
   const pr = await store.findOpenPr(session.repo, session.branch);
-  if (pr && pr.sessionId === null) await store.upsertPr({ ...pr, sessionId });
+  // Only the one column: a full upsert from this read could undo a webhook's newer checks.
+  if (pr && pr.sessionId === null) await store.patchPr(pr.repo, pr.number, { sessionId });
 }

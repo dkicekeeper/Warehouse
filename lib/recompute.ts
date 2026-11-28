@@ -35,7 +35,7 @@ export async function recompute(
   ]);
   await store.applyItemChanges(reconcileItems(before, computeAttention(snap, now, settings), now), now);
 
-  const observed = observeLimit(snap.jobs, history, settings.observedMacosLimit);
+  const observed = observeLimit(snap.jobs, history, settings.observedMacosLimit, now);
   if (observed !== settings.observedMacosLimit) await store.patchSettings({ observedMacosLimit: observed });
 
   const chatId = settings.telegramChatId;

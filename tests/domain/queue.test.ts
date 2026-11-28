@@ -104,36 +104,57 @@ describe('medianDurationMin', () => {
 
 describe('observeLimit', () => {
   const running = (n: number) => Array.from({ length: n }, () => active('in_progress').job);
-  const queued = active('queued').job;
+  const queued = active('queued', { waitingFor: 10 }).job;
   /** A finished mac job that ran from `from` to `to` minutes ago, created `wait` minutes before it started. */
   const done = (from: number, to: number, wait = 0) =>
     job({ createdAt: minutesAgo(from + wait), startedAt: minutesAgo(from), completedAt: minutesAgo(to) });
+  const limit = (live: Job[], history: Job[], prev: number | null) => observeLimit(live, history, prev, NOW);
 
   it('learns the limit from what runs while something waits', () => {
-    expect(observeLimit([...running(3), queued], [], null)).toBe(3);
+    expect(limit([...running(3), queued], [], null)).toBe(3);
   });
 
-  it('learns it from the last days of finished jobs too: what ran just before a waiting job started', () => {
-    // Two jobs ran 60→20 minutes ago; a third waited 30 minutes and started when the first ended.
-    const history = [done(60, 20), done(60, 30), done(30, 5, 30)];
-    expect(observeLimit([], history, null)).toBe(2);
+  it('a job queued a minute is a runner booting, not the limit', () => {
+    expect(limit([...running(1), active('queued', { waitingFor: 1 }).job], [], null)).toBeNull();
+  });
+
+  it('learns it from finished jobs too: what ran when the runner a waiting job took was freed', () => {
+    // Two jobs ran 60→20 and 60→30 minutes ago; a third waited 30 minutes and started 40 seconds
+    // after the second ended (a runner takes that long to boot).
+    const history = [done(60, 20), done(60, 30), done(30 - 2 / 3, 5, 30)];
+    expect(limit([], history, null)).toBe(2);
+  });
+
+  it('counts the jobs still running then', () => {
+    const history = [done(60, 30), done(29.5, 5, 30)];
+    const stillRunning = active('in_progress', { runningFor: 70 }).job;
+    expect(limit([stillRunning], history, null)).toBe(2);
+  });
+
+  it('a short wait in the history is not a limit either', () => {
+    expect(limit([], [done(60, 20), done(30, 5, 2)], null)).toBeNull();
+  });
+
+  it('a long wait with no runner freed shortly before is not read as the fill', () => {
+    // The job waited 30 minutes, but nothing finished in the 3 minutes before it started.
+    expect(limit([], [done(60, 40), done(30, 5, 30)], 4)).toBe(4);
   });
 
   it('follows the recent window down: a smaller limit seen lately replaces a larger old one', () => {
-    const history = [done(60, 20), done(60, 30), done(30, 5, 30)];
-    expect(observeLimit([], history, 5)).toBe(2);
-    expect(observeLimit([...running(4), queued], history, 2)).toBe(4);
+    const history = [done(60, 20), done(60, 30), done(29.5, 5, 30)];
+    expect(limit([], history, 5)).toBe(2);
+    expect(limit([...running(4), queued], history, 2)).toBe(4);
   });
 
   it('keeps what it knew when the window shows no waiting at all', () => {
-    expect(observeLimit(running(4), [done(60, 20), done(50, 10)], 3)).toBe(3);
-    expect(observeLimit(running(4), [], null)).toBeNull();
-    expect(observeLimit([queued], [], null)).toBeNull();
+    expect(limit(running(4), [done(60, 20), done(50, 10)], 3)).toBe(3);
+    expect(limit(running(4), [], null)).toBeNull();
+    expect(limit([queued], [], null)).toBeNull();
   });
 
   it('ignores linux jobs', () => {
     const linux = active('in_progress', { job: { labels: ['ubuntu-latest'] } }).job;
-    expect(observeLimit([linux, linux, ...running(1), queued], [], null)).toBe(1);
+    expect(limit([linux, linux, ...running(1), queued], [], null)).toBe(1);
   });
 });
 

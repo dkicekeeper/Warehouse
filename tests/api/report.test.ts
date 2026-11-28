@@ -137,6 +137,14 @@ describe('POST /api/report/sessions', () => {
     expect(after).toBe(1);
   });
 
+  it('one session with an odd id is dropped; the rest of the batch is stored', async () => {
+    const b = batch(2);
+    b.sessions[0]!.session_id = 'session_../../x';
+    expect((await handleReconcile(post(b), deps())).status).toBe(204);
+    expect(await store.getSession('session_1')).toMatchObject({ title: 'S1' });
+    expect(await store.getSession('session_../../x')).toBeNull();
+  });
+
   it('marks the hook source unhealthy when sessions changed without reporting', async () => {
     await handleSessionReport(post(report({ session_id: 'session_0' })), deps({ now: new Date(NOW.getTime() - 120 * 60_000) }));
     await handleReconcile(post(batch(1)), deps());

@@ -43,7 +43,8 @@ export async function handleGithubWebhook(req: Request, deps: GithubWebhookDeps)
     await applyGithubEvent(deps.store, event, payload, deps.now);
     await deps.store.touchSource('github_webhook', deps.now, true);
   } catch (err) {
-    // The 500 makes GitHub retry with the same delivery id: that retry must be applied, not dropped.
+    // GitHub does not retry on its own, but a redelivery (by hand, or by the resync) carries the
+    // same delivery id: it must be applied, not dropped as already seen.
     if (recorded) await deps.store.forgetEvent('github_webhook', delivery).catch(() => {});
     await deps.store
       .touchSource('github_webhook', deps.now, false, err instanceof Error ? err.message : 'ошибка обработки')

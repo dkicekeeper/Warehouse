@@ -116,10 +116,13 @@ export async function handleCancelRun(idParam: string, deps: OwnerDeps): Promise
   if (!run) return empty(404);
   if (run.status === 'completed') return empty(409);
   // A build that is running and nothing newer replaces is not the owner's to stop from the page:
-  // only a waiting build or one a newer push made stale gets the button, and so the API.
+  // only a waiting build or one a newer push made stale gets the button, and so the API. A run
+  // GitHub calls «in progress» still waits while one of its jobs is queued (a mac job behind the
+  // account's limit, after its linux jobs started).
   if (run.status === 'in_progress') {
-    const { runs } = await deps.store.loadSnapshot(deps.now);
-    if (!isStale(run, runs)) return empty(409);
+    const { runs, jobs } = await deps.store.loadSnapshot(deps.now);
+    const waiting = jobs.some((j) => j.runId === run.id && j.status === 'queued');
+    if (!waiting && !isStale(run, runs)) return empty(409);
   }
   if (!deps.github) return json({ error: 'Приложение GitHub не настроено' }, 503);
   try {

@@ -309,6 +309,37 @@ describe('a renamed repository', () => {
     expect((await store.loadSnapshot(NOW)).projects).toHaveLength(1);
   });
 
+  it('keeps the project documents and the items of the repository under the new name', async () => {
+    await stocked();
+    const doc = {
+      repo: REPO, path: 'docs/project.md', kind: 'project' as const, id: 'project', title: 'Platina',
+      status: 'development', fields: {}, body: '', blobSha: 'a',
+    };
+    await store.replaceRepoDocs(REPO, [doc], 't1', NOW);
+    await store.applyItemChanges(
+      {
+        insert: [{ key: `pr:${REPO}#3`, kind: 'pr_ready', level: 'request', projectId: null, text: 'PR #3', sessionId: null, pr: { repo: REPO, number: 3 }, repo: REPO, since: NOW }],
+        update: [],
+      },
+      NOW,
+    );
+    await apply('repository', repositoryRenamedEvent('Platina', 'PSPlatina'));
+    expect((await store.listRepoDocs(NEW)).map((d) => d.path)).toEqual(['docs/project.md']);
+    expect((await store.listDocsState()).find((d) => d.repo === NEW)).toMatchObject({ dirty: true, treeSha: 't1' });
+    const items = await store.loadItems();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ key: `pr:${NEW}#3`, repo: NEW, pr: { repo: NEW, number: 3 } });
+  });
+
+  it('before the id column exists, events still register the repository by name', async () => {
+    const noIdColumn = Object.assign(Object.create(store), {
+      getRepoByGithubId: () => Promise.reject(new Error('column "github_id" does not exist')),
+      setRepoGithubId: () => Promise.reject(new Error('column "github_id" does not exist')),
+    });
+    await applyGithubEvent(noIdColumn, 'pull_request', pullRequestEvent('opened'), NOW);
+    expect(await store.getPr(REPO, 3)).not.toBeNull();
+  });
+
   it('a different repository with a different id stays a different repository', async () => {
     await stocked();
     await apply('installation_repositories', { action: 'added', repositories_added: [{ id: 2002, full_name: 'dkicekeeper/Other', name: 'Other' }] });

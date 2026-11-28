@@ -186,10 +186,12 @@ describe('pull requests, runs and jobs', () => {
     // Red for three weeks and still the latest decisive run of its workflow: it stays on the board.
     const stillRed = run({ branch: 'main', workflow: 'Deploy', conclusion: 'failure', createdAt: minutesAgo(21 * 1440), completedAt: minutesAgo(21 * 1440 - 20) });
     const cancelledAfter = run({ branch: 'main', workflow: 'Deploy', conclusion: 'cancelled', createdAt: minutesAgo(19 * 1440), completedAt: minutesAgo(19 * 1440 - 5) });
+    // A workflow that has not run for 40 days was deleted: its last red is not shown.
+    const deletedRed = run({ branch: 'main', workflow: 'Old', conclusion: 'failure', createdAt: minutesAgo(40 * 1440), completedAt: minutesAgo(40 * 1440 - 20) });
     const liveJob = job({ status: 'in_progress', conclusion: null, completedAt: null });
     const doneJob = job();
     for (const p of [open, merged]) await store.upsertPr(p);
-    for (const r of [liveOld, recent, oldBranch, oldMain, ancientMain, stillRed, cancelledAfter]) await store.upsertRun(r);
+    for (const r of [liveOld, recent, oldBranch, oldMain, ancientMain, stillRed, cancelledAfter, deletedRed]) await store.upsertRun(r);
     for (const j of [liveJob, doneJob]) await store.upsertJob(j);
     const snap = await store.loadSnapshot(NOW);
     expect(snap.prs.map((p) => p.number)).toEqual([1]);

@@ -62,13 +62,14 @@ export async function registerRepo(store: Store, repo: z.infer<typeof Repository
   // A repository GitHub knows by the same id under another name was renamed: move it, so it keeps
   // its project and history instead of starting a new project beside an empty old one.
   if (repo.id !== undefined) {
-    const byId = await store.getRepoByGithubId(repo.id);
+    // Before migration 0005 the column is not there: the repository is still registered by name.
+    const byId = await store.getRepoByGithubId(repo.id).catch(() => null);
     if (byId && byId.fullName !== repo.full_name) await store.renameRepo(byId.fullName, repo.full_name);
   }
   const name = repo.name ?? repo.full_name.split('/')[1] ?? repo.full_name;
   const known = await store.getRepo(repo.full_name);
   await store.ensureRepo(repo.full_name, repo.default_branch ?? known?.defaultBranch ?? 'main', name);
-  if (repo.id !== undefined) await store.setRepoGithubId(repo.full_name, repo.id);
+  if (repo.id !== undefined) await store.setRepoGithubId(repo.full_name, repo.id).catch(() => {});
 }
 
 const RenamedEvent = z.object({
