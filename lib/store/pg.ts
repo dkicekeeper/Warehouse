@@ -233,10 +233,13 @@ export class PgStore implements Store {
         `select * from runs
           where status <> 'completed' or created_at > $1::timestamptz - interval '24 hours'
          union
-         select r.* from runs r
-           join repos p on p.full_name = r.repo and p.default_branch = r.branch
-          where r.event = 'push' and r.status = 'completed'
-            and r.created_at > $1::timestamptz - interval '14 days'`,
+         -- The latest decisive push run of each workflow on the default branch, however old:
+         -- «main красный» lasts as long as that run stays red.
+         (select distinct on (r.repo, r.workflow) r.* from runs r
+            join repos p on p.full_name = r.repo and p.default_branch = r.branch
+           where r.event = 'push' and r.status = 'completed'
+             and r.conclusion in ('success', 'failure', 'timed_out')
+           order by r.repo, r.workflow, r.completed_at desc nulls last)`,
         [n],
       ),
       this.sql.query(`select * from jobs where status <> 'completed'`),

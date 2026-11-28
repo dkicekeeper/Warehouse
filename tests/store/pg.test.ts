@@ -157,7 +157,7 @@ describe('pull requests, runs and jobs', () => {
     expect(await store.findOpenPr('o/r', p.branch)).toBeNull();
   });
 
-  it('the snapshot holds open PRs, live runs and jobs, the last day of runs, and default-branch push runs', async () => {
+  it('the snapshot holds open PRs, live runs and jobs, the last day of runs, and the latest decisive default-branch push run of each workflow, however old', async () => {
     await store.ensureRepo('o/r', 'main', 'R');
     const open = pr({ number: 1 });
     const merged = pr({ number: 2, state: 'merged' });
@@ -166,14 +166,17 @@ describe('pull requests, runs and jobs', () => {
     const oldBranch = run({ createdAt: minutesAgo(3 * 1440) });
     const oldMain = run({ branch: 'main', conclusion: 'failure', createdAt: minutesAgo(3 * 1440) });
     const ancientMain = run({ branch: 'main', createdAt: minutesAgo(20 * 1440) });
+    // Red for three weeks and still the latest decisive run of its workflow: it stays on the board.
+    const stillRed = run({ branch: 'main', workflow: 'Deploy', conclusion: 'failure', createdAt: minutesAgo(21 * 1440), completedAt: minutesAgo(21 * 1440 - 20) });
+    const cancelledAfter = run({ branch: 'main', workflow: 'Deploy', conclusion: 'cancelled', createdAt: minutesAgo(19 * 1440), completedAt: minutesAgo(19 * 1440 - 5) });
     const liveJob = job({ status: 'in_progress', conclusion: null, completedAt: null });
     const doneJob = job();
     for (const p of [open, merged]) await store.upsertPr(p);
-    for (const r of [liveOld, recent, oldBranch, oldMain, ancientMain]) await store.upsertRun(r);
+    for (const r of [liveOld, recent, oldBranch, oldMain, ancientMain, stillRed, cancelledAfter]) await store.upsertRun(r);
     for (const j of [liveJob, doneJob]) await store.upsertJob(j);
     const snap = await store.loadSnapshot(NOW);
     expect(snap.prs.map((p) => p.number)).toEqual([1]);
-    expect(snap.runs.map((r) => r.id).sort()).toEqual([liveOld.id, recent.id, oldMain.id].sort());
+    expect(snap.runs.map((r) => r.id).sort()).toEqual([liveOld.id, recent.id, oldMain.id, stillRed.id].sort());
     expect(snap.jobs.map((j) => j.id)).toEqual([liveJob.id]);
   });
 
