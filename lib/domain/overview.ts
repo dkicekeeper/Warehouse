@@ -39,6 +39,7 @@ export const KIND_LABEL: Record<ItemKind, string> = {
   pr_ready: 'PR готов',
   ci_failed: 'CI упал',
   main_red: 'main красный',
+  metrics_trial_cost: 'реклама',
 };
 
 const tabOf = (kind: ItemKind): InboxTab => (kind.startsWith('session_') ? 'sessions' : 'prs');

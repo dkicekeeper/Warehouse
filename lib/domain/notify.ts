@@ -83,7 +83,13 @@ export function formatItem(item: StoredItem, projectName: string, baseUrl: strin
 const DIGEST_MAX_CHARS = 3800;
 const DIGEST_LINE_CHARS = 200;
 
-function formatDigest(requests: StoredItem[], notes: StoredItem[], nameOf: (i: StoredItem) => string, baseUrl: string): string {
+function formatDigest(
+  requests: StoredItem[],
+  notes: StoredItem[],
+  nameOf: (i: StoredItem) => string,
+  baseUrl: string,
+  numbers: string[] = [],
+): string {
   const cut = (t: string) => (t.length > DIGEST_LINE_CHARS ? `${t.slice(0, DIGEST_LINE_CHARS - 1)}…` : t);
   const line = (i: StoredItem) => `• <b>${esc(nameOf(i))}</b> · ${esc(cut(i.text))}`;
   const footer = `\n<a href="${baseUrl}">Открыть панель</a>`;
@@ -108,6 +114,10 @@ function formatDigest(requests: StoredItem[], notes: StoredItem[], nameOf: (i: S
   };
   section('Ждёт вас', requests);
   section('Заметки', notes);
+  if (numbers.length > 0 && hidden === 0) {
+    if (parts.length > 0) add('');
+    if (add('<b>Цифры за вчера</b>')) for (const n of numbers) if (!add(`• ${esc(cut(n))}`)) break;
+  }
   if (hidden > 0) parts.push(more(hidden));
   parts.push(footer);
   return parts.join('\n');
@@ -119,6 +129,8 @@ export function planNotifications(
   now: Date,
   cfg: Settings,
   baseUrl: string,
+  /** Yesterday's numbers for the morning digest; it goes out for them alone. */
+  metricsLines: string[] = [],
 ): NotifyPlan {
   if (cfg.telegramChatId === null || inQuietHours(now, cfg)) return { actions: [], digestDue: false };
 
@@ -142,11 +154,11 @@ export function planNotifications(
   const digestDue = cfg.lastDigestAt === null || cfg.lastDigestAt.getTime() < lastQuietEnd(now, cfg).getTime();
   if (digestDue) {
     const notes = pending.filter((i) => i.level === 'note');
-    if (due.length + notes.length > 0) {
+    if (due.length + notes.length + metricsLines.length > 0) {
       actions.push({
         type: 'send',
         itemIds: [...due, ...notes].map((i) => i.id),
-        text: formatDigest(due, notes, nameOf, baseUrl),
+        text: formatDigest(due, notes, nameOf, baseUrl, metricsLines),
         digest: true,
         fallback: due.map((i) => ({ itemId: i.id, text: formatItem(i, nameOf(i), baseUrl) })),
       });

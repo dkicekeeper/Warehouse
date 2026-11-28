@@ -1,4 +1,5 @@
-import { computeAttention } from '@/lib/domain/attention';
+import { computeAttention, metricsAlerts } from '@/lib/domain/attention';
+import { addDays, digestLines, isoDay, ownerFromDocs, summarize, trialCostAlerts } from '@/lib/domain/metrics';
 import { reconcileItems } from '@/lib/domain/items';
 import { planNotifications } from '@/lib/domain/notify';
 import { observeLimit } from '@/lib/domain/queue';
@@ -33,7 +34,18 @@ export async function recompute(
     store.loadItems(),
     store.loadJobHistory(now),
   ]);
-  await store.applyItemChanges(reconcileItems(before, computeAttention(snap, now, settings), now), now);
+  // Metrics: the trial signal and the digest's numbers. Unreadable metrics never stop the rest.
+  let numbers: string[] = [];
+  let alerts: ReturnType<typeof metricsAlerts> = [];
+  try {
+    const [rows, docs] = await Promise.all([store.loadMetricDays(addDays(isoDay(now), -15)), store.listDocs()]);
+    const owner = ownerFromDocs(snap.projects, snap.repos, docs, settings.revenuecatProjects);
+    alerts = metricsAlerts(trialCostAlerts(summarize(rows, owner, 7, now), settings.metricsTrialCostLimit), settings.metricsTrialCostLimit, now);
+    if (settings.metricsInDigest) numbers = digestLines(rows, owner, now);
+  } catch {
+    /* the board and Telegram go on without them */
+  }
+  await store.applyItemChanges(reconcileItems(before, [...computeAttention(snap, now, settings), ...alerts], now), now);
 
   const observed = observeLimit(snap.jobs, history, settings.observedMacosLimit, now);
   if (observed !== settings.observedMacosLimit) await store.patchSettings({ observedMacosLimit: observed });
@@ -41,7 +53,7 @@ export async function recompute(
   const chatId = settings.telegramChatId;
   if (chatId === null) return result;
 
-  const plan = planNotifications(await store.loadItems(), snap.projects, now, settings, baseUrl);
+  const plan = planNotifications(await store.loadItems(), snap.projects, now, settings, baseUrl, numbers);
   let digestDelivered = !plan.actions.some((a) => a.type === 'send' && a.digest);
 
   for (const action of plan.actions) {

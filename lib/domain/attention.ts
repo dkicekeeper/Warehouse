@@ -1,3 +1,4 @@
+import { formatMoney, type Money } from './metrics';
 import type { PullRequest, Repo, Run, Session, Settings, Snapshot } from './types';
 
 export type ItemKind =
@@ -8,7 +9,8 @@ export type ItemKind =
   | 'session_reconcile'
   | 'pr_ready'
   | 'ci_failed'
-  | 'main_red';
+  | 'main_red'
+  | 'metrics_trial_cost';
 
 /** request: the owner was asked, or something is broken. note: the service worked it out itself. */
 export type ItemLevel = 'request' | 'note';
@@ -209,4 +211,23 @@ function mainRedItems(runs: Run[], repoByName: Map<string, Repo>): DesiredItem[]
     });
   }
   return items;
+}
+
+/** A trial dearer than the limit over the last 7 days: a note per product, gone once it is cheaper. */
+export function metricsAlerts(
+  alerts: { projectId: string | null; name: string; cost: Money }[],
+  limit: number,
+  since: Date,
+): DesiredItem[] {
+  return alerts.map((a) => ({
+    key: `metrics:trial-cost:${a.projectId ?? a.name}`,
+    kind: 'metrics_trial_cost',
+    level: 'note',
+    projectId: a.projectId,
+    text: `Пробный за 7 дней стоит ${formatMoney(a.cost)} — дороже порога ${formatMoney({ amount: limit, currency: a.cost.currency })}`,
+    sessionId: null,
+    pr: null,
+    repo: null,
+    since,
+  }));
 }

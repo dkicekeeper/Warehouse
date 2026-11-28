@@ -228,6 +228,22 @@ describe('planNotifications', () => {
     expect(plan([note], NOON, { ...CFG, lastDigestAt: null })).toMatchObject({ digestDue: true, actions: [{ digest: true }] });
   });
 
+  it('the morning digest goes out for the numbers alone, under its own heading after the notes', () => {
+    const morning = almaty('08:00', '2026-11-26');
+    const only = planNotifications([], PROJECTS, morning, CFG, BASE, ['Tenra: 21 установка, 1 пробный, реклама $9']);
+    expect(only.actions).toEqual([
+      expect.objectContaining({ type: 'send', digest: true, itemIds: [], text: expect.stringContaining('<b>Цифры за вчера</b>') }),
+    ]);
+    expect(only.actions[0]?.type === 'send' && only.actions[0].text).toContain('• Tenra: 21 установка, 1 пробный, реклама $9');
+    const note = item({ id: 'n', key: 'session:n', level: 'note', kind: 'session_unknown', text: 'без статуса: хвост' });
+    const [a] = planNotifications([note], PROJECTS, morning, CFG, BASE, ['Tenra: 21 установка']).actions;
+    expect(a?.type === 'send' && a.text.indexOf('хвост')).toBeLessThan(a?.type === 'send' ? a.text.indexOf('Цифры за вчера') : -1);
+  });
+
+  it('numbers do not go out outside the morning digest', () => {
+    expect(planNotifications([], PROJECTS, NOON, CFG, BASE, ['Tenra: 21 установка']).actions).toEqual([]);
+  });
+
   it('a held request is left out of the digest and goes out on its own when its delay passes', () => {
     const morning = almaty('08:00', '2026-11-26');
     const held = item({ kind: 'pr_ready', firstSeenAt: minutesAgo(2, morning) });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   appOwner,
+  ownerFromDocs,
   digestLines,
   summarize,
   trialCostAlerts,
@@ -176,5 +177,18 @@ describe('digestLines', () => {
 
   it('a product with no numbers has no line', () => {
     expect(digestLines([], owner, NOW)).toEqual([]);
+  });
+});
+
+describe('ownerFromDocs', () => {
+  it('reads the store link from each repository passport and the project the repository belongs to', () => {
+    const o = ownerFromDocs(
+      [{ id: 'p-tenra', name: 'Tenra' }],
+      [{ fullName: 'dkicekeeper/Tenra', projectId: 'p-tenra' }],
+      [{ repo: 'dkicekeeper/Tenra', kind: 'project', fields: { links: { store: 'https://apps.apple.com/app/id6761530361' } } }],
+      {},
+    );
+    expect(o(TENRA_APP)).toEqual({ projectId: 'p-tenra', name: 'Tenra' });
+    expect(o(DALADA_APP)).toEqual({ projectId: null, name: 'Без проекта' });
   });
 });

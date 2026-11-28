@@ -223,6 +223,39 @@ describe('recompute', () => {
     expect(await store.loadItems()).toHaveLength(1);
   });
 
+  it('the morning digest carries yesterday’s numbers, unless the owner turned them off', async () => {
+    await store.patchSettings({ lastDigestAt: minutesAgo(30 * 60) });
+    await store.upsertMetricDays([{ app: 'rc:p1', source: 'revenuecat', metric: 'trials_new', day: '2026-11-24', value: 2, unit: 'count' }]);
+    await store.patchSettings({ revenuecatProjects: { p1: { name: 'Без проекта', projectId: null } } });
+    expect(await go()).toMatchObject({ sent: 1 });
+    expect(notifier.sent[0]?.html).toContain('2 пробных');
+    notifier.sent = [];
+    await store.patchSettings({ lastDigestAt: minutesAgo(30 * 60), metricsInDigest: false });
+    await go();
+    expect(notifier.sent).toHaveLength(0);
+  });
+
+  it('a trial dearer than the limit over the week is a note, and goes when it is cheaper again', async () => {
+    await store.ensureRepo('dkicekeeper/Tenra', 'main', 'Tenra');
+    const tenra = { id: (await store.getRepo('dkicekeeper/Tenra'))!.projectId };
+    await store.patchSettings({ revenuecatProjects: { p1: { name: 'Tenra', projectId: null } } });
+    const rows = (spend: number) => [
+      { app: 'rc:p1', source: 'revenuecat' as const, metric: 'trials_new' as const, day: '2026-11-20', value: 3, unit: 'count' },
+      { app: 'rc:p1', source: 'revenuecat' as const, metric: 'trials_new' as const, day: '2026-11-21', value: 0, unit: 'count' },
+      { app: '6761530361', source: 'apple_ads' as const, metric: 'ad_spend' as const, day: '2026-11-20', value: spend, unit: 'USD' },
+    ];
+    // Ads are matched to Tenra through RevenueCat here: both rows must reach the same product.
+    await store.upsertMetricDays(rows(62).map((r) => (r.source === 'apple_ads' ? { ...r, app: 'rc:p1' } : r)));
+    await go();
+    const note = (await store.loadItems()).find((i) => i.kind === 'metrics_trial_cost');
+    expect(note).toMatchObject({ level: 'note', status: 'open', projectId: tenra.id });
+    expect(note?.text).toContain('$20,67');
+    expect(note?.text).toContain('$15');
+    await store.upsertMetricDays([{ app: 'rc:p1', source: 'apple_ads', metric: 'ad_spend', day: '2026-11-20', value: 30, unit: 'USD' }]);
+    await go();
+    expect((await store.loadItems()).some((i) => i.kind === 'metrics_trial_cost' && i.status === 'open')).toBe(false);
+  });
+
   it('learns the number of mac jobs that run while one waits', async () => {
     const live = { conclusion: null, completedAt: null };
     const r = run({ status: 'in_progress', ...live });

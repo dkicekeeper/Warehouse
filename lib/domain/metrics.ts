@@ -74,6 +74,31 @@ export type RevenueCatProjects = Record<string, { name: string; projectId: strin
 export type Owner = (app: string) => { projectId: string | null; name: string };
 
 const NO_PROJECT = 'Без проекта';
+
+/**
+ * Who owns an app, from what the service already knows: the store link in each repository's
+ * passport (`links.store` in docs/project.md) and the project the repository belongs to.
+ */
+export function ownerFromDocs(
+  projects: { id: string; name: string }[],
+  repos: { fullName: string; projectId: string }[],
+  docs: { repo: string; kind: string; fields: Record<string, unknown> }[],
+  rcProjects: RevenueCatProjects,
+): Owner {
+  const projectOfRepo = new Map(repos.map((r) => [r.fullName, r.projectId]));
+  const storeOf = new Map<string, string>();
+  for (const d of docs) {
+    if (d.kind !== 'project') continue;
+    const links = d.fields.links;
+    const store = links && typeof links === 'object' ? (links as Record<string, unknown>).store : undefined;
+    const projectId = projectOfRepo.get(d.repo);
+    if (typeof store === 'string' && projectId && !storeOf.has(projectId)) storeOf.set(projectId, store);
+  }
+  return appOwner(
+    projects.map((p) => ({ id: p.id, name: p.name, storeUrl: storeOf.get(p.id) ?? null })),
+    rcProjects,
+  );
+}
 const DAY = 86_400_000;
 
 /** YYYY-MM-DD of a moment, UTC. */
