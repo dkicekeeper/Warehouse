@@ -48,8 +48,9 @@
 
 ### CI-4. Проверка стандарта в каждом репозитории
 
-Правило: в репозитории есть `.github/workflows/standard.yml` — копия `standard/workflow.yml`
-Warehouse без правок.
+Правило: в репозитории проекта есть `.github/workflows/standard.yml` — копия
+`standard/workflow.yml` Warehouse без правок. У Warehouse свой вариант: он проверяет собственную
+ветку, а не `main`.
 
 Почему: он проверяет `docs/` на каждом PR и раз в сутки обновляет блок стандарта в `CLAUDE.md`.
 

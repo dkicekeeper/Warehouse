@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm';
 import type { GuideView } from '@/lib/api/guides';
 import { proposeUrl, type GuideRule } from '@/lib/domain/guides';
 import { cn } from '@/lib/utils';
+import { plural } from './format';
 import { Chip, Notice, Page, link } from './page';
 import { buttonVariants } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -78,7 +79,8 @@ function Md({ children, className }: { children: string; className?: string }) {
   );
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+// The owner's own calendar day (the browser's time zone), not UTC: a proposal at 02:00 in Almaty is today's.
+const today = () => new Date().toLocaleDateString('sv-SE');
 
 /** «в docs/ есть…» after «Правило:» reads as a sentence on its own: capital first letter. */
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -126,7 +128,7 @@ export function Guides() {
                     <h2 className="text-base font-medium">{g.title}</h2>
                     <p className="line-clamp-3 text-sm text-muted-foreground">{summary(g.intro)}</p>
                     <p className="text-xs text-muted-foreground">
-                      {g.counts.rules} {g.counts.rules === 1 ? 'правило' : g.counts.rules < 5 ? 'правила' : 'правил'} ·{' '}
+                      {plural(g.counts.rules, ['правило', 'правила', 'правил'])} ·{' '}
                       <AutoCount n={g.counts.auto} /> · {g.counts.auditOnly} на аудите
                     </p>
                   </CardContent>
@@ -157,7 +159,7 @@ function GuideDetail({ guide }: { guide: GuideView }) {
     >
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>
-          {guide.counts.rules} правил · <AutoCount n={guide.counts.auto} /> · {guide.counts.auditOnly} на аудите
+          {plural(guide.counts.rules, ['правило', 'правила', 'правил'])} · <AutoCount n={guide.counts.auto} /> · {guide.counts.auditOnly} на аудите
         </span>
         <span className="ml-auto">
           <ProposeLink rule={null} guide={guide} label="Предложить правку гайдлайна" />

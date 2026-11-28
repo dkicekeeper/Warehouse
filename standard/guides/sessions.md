@@ -25,8 +25,9 @@
 
 ### SES-2. Хук отчёта стоит
 
-Правило: в репозитории проекта есть `.claude/hooks/warehouse-report.py` и его вызов в
-`.claude/settings.json` на события `Stop` и `UserPromptSubmit`; облачное окружение ставит тот же
+Правило: в репозитории проекта есть копия хука `.claude/hooks/warehouse-report.py` (в Warehouse —
+сам источник, `hooks/warehouse-report.py`) и его вызов в `.claude/settings.json` на события `Stop`
+и `UserPromptSubmit`; облачное окружение ставит тот же
 хук для пользователя (`hooks/README.md`, «Уровень окружения»).
 
 Почему: решение владельца [«Сервис с вебхуками и хуками сессий»](https://github.com/dkicekeeper/Warehouse/blob/main/docs/decisions/2026-11-25-service-with-webhooks-and-hooks.md).
