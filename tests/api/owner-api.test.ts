@@ -240,6 +240,7 @@ describe('settings', () => {
       projects: [{ id: tenra.projectId, name: 'Tenra', repos: ['o/Tenra'] }],
       looseSessions: [{ id: 'session_loose', title: 'Otbasy' }],
       sources: [{ source: 'reconcile', lastOkAt: minutesAgo(30).toISOString(), lastErrorAt: null, note: null }],
+      metrics: { trialCostLimit: 15, inDigest: true, revenuecatProjects: [] },
     });
   });
 
@@ -267,6 +268,25 @@ describe('settings', () => {
   ])('update rejects %s with 400', async (_n, settings) => {
     expect((await handleSettingsPost(post({ action: 'update', settings }), deps())).status).toBe(400);
     expect(await store.getSettings()).toMatchObject({ workingTtlMin: 120, telegramChatId: null });
+  });
+
+  it('metrics: the trial limit and the digest switch are the owner’s to set, within reason', async () => {
+    expect((await handleSettingsPost(post({ action: 'update', settings: { metricsTrialCostLimit: 12.5, metricsInDigest: false } }), deps())).status).toBe(204);
+    expect(await store.getSettings()).toMatchObject({ metricsTrialCostLimit: 12.5, metricsInDigest: false });
+    expect((await handleSettingsPost(post({ action: 'update', settings: { metricsTrialCostLimit: 0 } }), deps())).status).toBe(400);
+    expect((await handleSettingsPost(post({ action: 'update', settings: { metricsTrialCostLimit: 100_001 } }), deps())).status).toBe(400);
+  });
+
+  it('a RevenueCat project is tied to a Warehouse project, or back to the one of its name', async () => {
+    const tenra = await store.ensureRepo('o/Tenra', 'main', 'Tenra');
+    await store.patchSettings({ revenuecatProjects: { p1: { name: 'Tenra app', projectId: null } } });
+    expect((await handleSettingsPost(post({ action: 'linkRevenueCat', revenuecatId: 'p1', projectId: tenra.projectId }), deps())).status).toBe(204);
+    const body = await (await handleSettingsGet(deps())).json();
+    expect(body.metrics.revenuecatProjects).toEqual([{ id: 'p1', name: 'Tenra app', projectId: tenra.projectId }]);
+    expect((await handleSettingsPost(post({ action: 'linkRevenueCat', revenuecatId: 'p1', projectId: null }), deps())).status).toBe(204);
+    expect((await store.getSettings()).revenuecatProjects.p1?.projectId).toBeNull();
+    expect((await handleSettingsPost(post({ action: 'linkRevenueCat', revenuecatId: 'nope', projectId: null }), deps())).status).toBe(400);
+    expect((await handleSettingsPost(post({ action: 'linkRevenueCat', revenuecatId: 'p1', projectId: 'ghost' }), deps())).status).toBe(400);
   });
 
   it('linkTelegram issues a one-time code good for 15 minutes', async () => {

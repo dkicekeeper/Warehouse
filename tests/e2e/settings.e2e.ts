@@ -15,6 +15,7 @@ const VIEW = {
     { source: 'github_webhook', lastOkAt: new Date(Date.now() - 3 * 60_000).toISOString(), lastErrorAt: null, note: null },
     { source: 'reconcile', lastOkAt: null, lastErrorAt: new Date(Date.now() - 60_000).toISOString(), note: 'boom' },
   ],
+  metrics: { trialCostLimit: 15, inDigest: true, revenuecatProjects: [{ id: 'rc1', name: 'Tenra app', projectId: null }] },
 };
 
 let browser: Browser;
@@ -58,7 +59,7 @@ it('shows rules, the Telegram code, projects with repositories, loose sessions a
 it('saving the rules posts numbers, and an empty limit as null', async () => {
   const { page, posts } = await open();
   await page.getByLabel('Сколько верить «работаю» без новостей, мин').fill('90');
-  await page.getByRole('button', { name: 'Сохранить' }).click();
+  await page.getByRole('button', { name: 'Сохранить' }).first().click();
   await expect.poll(() => posts).toEqual([
     { action: 'update', settings: { workingTtlMin: 90, notifyDelayMin: 5, quietStart: '23:00', quietEnd: '08:00', macosLimit: null } },
   ]);
@@ -72,5 +73,17 @@ it('assigning a loose session and moving a repository post the right actions', a
   await expect.poll(() => posts).toEqual([
     { action: 'assignSession', sessionId: 'session_f', projectId: 'p2' },
     { action: 'moveRepo', repo: 'dkicekeeper/tenra-assets', projectId: 'p2' },
+  ]);
+});
+
+it('metrics: the trial limit, the digest switch and a RevenueCat project post the right actions', async () => {
+  const { page, posts } = await open();
+  await page.getByLabel(/Порог цены пробного/).fill('12,5');
+  await page.getByLabel('Цифры за вчера в утренней сводке').selectOption('no');
+  await page.getByRole('button', { name: 'Сохранить' }).last().click();
+  await page.getByLabel('Проект для Tenra app').selectOption('p1');
+  await expect.poll(() => posts).toEqual([
+    { action: 'update', settings: { metricsTrialCostLimit: 12.5, metricsInDigest: false } },
+    { action: 'linkRevenueCat', revenuecatId: 'rc1', projectId: 'p1' },
   ]);
 });

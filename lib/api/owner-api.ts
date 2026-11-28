@@ -165,6 +165,11 @@ export async function handleSettingsGet(deps: OwnerDeps): Promise<Response> {
       .filter((s) => !s.archived && s.projectId === null && !(s.repo && repoProject.has(s.repo)))
       .map((s) => ({ id: s.id, title: s.title })),
     sources,
+    metrics: {
+      trialCostLimit: settings.metricsTrialCostLimit,
+      inDigest: settings.metricsInDigest,
+      revenuecatProjects: Object.entries(settings.revenuecatProjects).map(([id, p]) => ({ id, name: p.name, projectId: p.projectId })),
+    },
   });
 }
 
@@ -180,6 +185,8 @@ const SettingsAction = z.discriminatedUnion('action', [
         quietStart: HHMM,
         quietEnd: HHMM,
         macosLimit: z.number().int().min(1).max(50).nullable(),
+        metricsTrialCostLimit: z.number().positive().max(100_000),
+        metricsInDigest: z.boolean(),
       })
       .partial()
       .strict(),
@@ -189,6 +196,7 @@ const SettingsAction = z.discriminatedUnion('action', [
   z.object({ action: z.literal('renameProject'), projectId: z.string().min(1), name: z.string().trim().min(1).max(80) }),
   z.object({ action: z.literal('moveRepo'), repo: z.string().min(1), projectId: z.string().min(1) }),
   z.object({ action: z.literal('assignSession'), sessionId: z.string().min(1), projectId: z.string().min(1) }),
+  z.object({ action: z.literal('linkRevenueCat'), revenuecatId: z.string().min(1), projectId: z.string().min(1).nullable() }),
 ]);
 
 export async function handleSettingsPost(req: Request, deps: OwnerDeps): Promise<Response> {
@@ -225,5 +233,12 @@ export async function handleSettingsPost(req: Request, deps: OwnerDeps): Promise
       if (!(await projectExists(a.projectId)) || !(await store.getSession(a.sessionId))) return empty(400);
       await store.upsertSession({ id: a.sessionId, projectId: a.projectId });
       return empty(204);
+    case 'linkRevenueCat': {
+      const { revenuecatProjects } = await store.getSettings();
+      const known = revenuecatProjects[a.revenuecatId];
+      if (!known || (a.projectId !== null && !(await projectExists(a.projectId)))) return empty(400);
+      await store.patchSettings({ revenuecatProjects: { ...revenuecatProjects, [a.revenuecatId]: { ...known, projectId: a.projectId } } });
+      return empty(204);
+    }
   }
 }

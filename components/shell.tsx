@@ -18,6 +18,7 @@ const NAV = [
   { href: '/', label: 'Обзор', short: 'Обзор', icon: LayoutDashboard },
   { href: '/projects', label: 'Проекты', short: 'Проекты', icon: FolderKanban },
   { href: '/backlog', label: 'Задачи и планы', short: 'Задачи', icon: ListTodo },
+  { href: '/metrics', label: 'Метрики', short: 'Метрики', icon: LineChart },
   { href: '/guides', label: 'Гайдлайны', short: 'Правила', icon: BookOpen },
   { href: '/settings', label: 'Настройки', short: 'Настройки', icon: Settings },
 ] as const;
@@ -79,11 +80,6 @@ function Sidebar() {
             </Link>
           );
         })}
-        <span className="flex h-9 items-center gap-2.5 px-2 text-sm text-muted-foreground" aria-disabled>
-          <LineChart className="size-4" aria-hidden />
-          Метрики
-          <span className="ml-auto text-xs">позже</span>
-        </span>
       </nav>
       {projects.length > 0 && (
         <nav aria-label="Проекты" className="flex min-h-0 flex-col gap-0.5 overflow-y-auto">
@@ -121,7 +117,7 @@ function TabBar() {
   return (
     <nav
       aria-label="Разделы"
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
     >
       {NAV.map(({ href, short, icon: Icon }) => {
         const active = href === '/' ? path === '/' : path.startsWith(href);

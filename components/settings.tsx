@@ -24,6 +24,7 @@ interface SettingsView {
   projects: { id: string; name: string; repos: string[] }[];
   looseSessions: { id: string; title: string | null }[];
   sources: { source: string; lastOkAt: string | null; lastErrorAt: string | null; note: string | null }[];
+  metrics: { trialCostLimit: number; inDigest: boolean; revenuecatProjects: { id: string; name: string; projectId: string | null }[] };
 }
 
 const SOURCES: Record<string, string> = {
@@ -85,6 +86,7 @@ export function Settings() {
           <Rules view={view} send={send} />
           <Telegram view={view} send={send} />
           <ProjectsBlock view={view} send={send} />
+          <MetricsBlock view={view} send={send} />
           <Sources view={view} />
           <form action="/auth/signout" method="post">
             <Button type="submit" variant="outline">Выйти</Button>
@@ -160,6 +162,60 @@ function Rules({ view, send }: { view: SettingsView; send: Send }) {
         </label>
         <Button type="submit" className="self-start">Сохранить</Button>
       </form>
+    </Block>
+  );
+}
+
+function MetricsBlock({ view, send }: { view: SettingsView; send: Send }) {
+  const m = view.metrics;
+  const [limit, setLimit] = useState(String(m.trialCostLimit));
+  const [inDigest, setInDigest] = useState(m.inDigest ? 'yes' : 'no');
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    void send({ action: 'update', settings: { metricsTrialCostLimit: Number(limit.replace(',', '.')), metricsInDigest: inDigest === 'yes' } });
+  };
+  return (
+    <Block title="Метрики">
+      <form onSubmit={save} className="space-y-3">
+        <label className="flex flex-wrap items-center gap-2">
+          <span className="min-w-56 flex-1">
+            Порог цены пробного за 7 дней
+            <span className="block text-xs text-muted-foreground">Дороже — заметка в «Ждёт вас». В валюте рекламного счёта.</span>
+          </span>
+          <Input className="w-24" inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value)} />
+        </label>
+        <label className="flex flex-wrap items-center gap-2">
+          <span className="min-w-56 flex-1">Цифры за вчера в утренней сводке</span>
+          <NativeSelect value={inDigest} onChange={(e) => setInDigest(e.target.value)}>
+            <NativeSelectOption value="yes">Да</NativeSelectOption>
+            <NativeSelectOption value="no">Нет</NativeSelectOption>
+          </NativeSelect>
+        </label>
+        <Button type="submit" className="self-start">Сохранить</Button>
+      </form>
+      {m.revenuecatProjects.length > 0 && (
+        <div className="flex flex-col gap-2 border-t pt-3">
+          <span className="text-xs text-muted-foreground">Проекты RevenueCat. Без выбора — проект с тем же именем.</span>
+          {m.revenuecatProjects.map((rc) => (
+            <label key={rc.id} className="flex flex-wrap items-center gap-2">
+              <span className="min-w-56 flex-1">{rc.name}</span>
+              <NativeSelect
+                aria-label={`Проект для ${rc.name}`}
+                value={rc.projectId ?? ''}
+                onChange={(e) => void send({ action: 'linkRevenueCat', revenuecatId: rc.id, projectId: e.target.value || null })}
+              >
+                <NativeSelectOption value="">по имени</NativeSelectOption>
+                {view.projects.map((p) => (
+                  <NativeSelectOption key={p.id} value={p.id}>
+                    {p.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </label>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Откуда цифры и когда собраны — на странице «Метрики».</p>
     </Block>
   );
 }
