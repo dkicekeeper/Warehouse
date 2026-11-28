@@ -2,9 +2,17 @@ import { z } from 'zod';
 import { parseStatusLine } from '@/lib/domain/status-line';
 import type { SessionPatch, Store } from '@/lib/store/store';
 
+/**
+ * A session's id: `session_…` for a cloud session (letters and digits), a UUID for a local one.
+ * Nothing else is stored, so no markup or path can reach the board or a link.
+ */
+const SessionId = z
+  .string()
+  .regex(/^(session_[A-Za-z0-9]{1,100}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/);
+
 /** What the Stop hook of a session sends at the end of every turn. */
 export const SessionReport = z.object({
-  session_id: z.string().min(1).max(200),
+  session_id: SessionId,
   repo: z
     .string()
     .max(200)
@@ -23,7 +31,7 @@ export const ReconcileBatch = z.object({
   sessions: z
     .array(
       z.object({
-        session_id: z.string().min(1).max(200),
+        session_id: SessionId,
         title: z.string().max(500).nullable(),
         archived: z.boolean(),
         bucket: z.enum(['working', 'blocked', 'review_ready', 'completed', 'failed']),
