@@ -458,6 +458,40 @@ export class PgStore implements Store {
     );
   }
 
+  async getRepoByGithubId(githubId: number): Promise<Repo | null> {
+    const [r] = await this.sql.query('select * from repos where github_id = $1', [githubId]);
+    return r ? toRepo(r) : null;
+  }
+
+  async setRepoGithubId(fullName: string, githubId: number): Promise<void> {
+    await this.sql.query('update repos set github_id = $2 where full_name = $1 and github_id is distinct from $2', [fullName, githubId]);
+  }
+
+  async renameRepo(from: string, to: string): Promise<void> {
+    const [old] = await this.sql.query('select * from repos where full_name = $1', [from]);
+    if (!old || from === to) return;
+    // The id moves with the name; free it first, it is unique.
+    await this.sql.query('update repos set github_id = null where full_name = $1', [from]);
+    await this.sql.query(
+      `insert into repos (full_name, project_id, default_branch, docs_tree_sha, docs_dirty, docs_synced_at, github_id)
+       values ($1, $2, $3, $4, $5, $6::timestamptz, $7)
+       on conflict (full_name) do update set project_id = excluded.project_id, github_id = excluded.github_id`,
+      [to, old.project_id, old.default_branch, old.docs_tree_sha ?? null, old.docs_dirty ?? true, old.docs_synced_at ? ts(new Date(String(old.docs_synced_at))) : null, old.github_id ?? null],
+    );
+    // A row already under the new name wins; the old copy of it goes.
+    await this.sql.query(
+      'delete from pull_requests o where o.repo = $1 and exists (select 1 from pull_requests n where n.repo = $2 and n.number = o.number)',
+      [from, to],
+    );
+    for (const table of ['pull_requests', 'runs', 'jobs', 'sessions', 'items']) {
+      await this.sql.query('update ' + table + ' set repo = $2 where repo = $1', [from, to]);
+    }
+    await this.sql.query('update items set pr_repo = $2 where pr_repo = $1', [from, to]);
+    await this.sql.query('delete from project_docs where repo = $1', [from]);
+    await this.sql.query('update repos set docs_dirty = true where full_name = $1', [to]);
+    await this.sql.query('delete from repos where full_name = $1', [from]);
+  }
+
   async forgetMergeable(repo: string): Promise<void> {
     await this.sql.query("update pull_requests set mergeable = null where repo = $1 and state = 'open'", [repo]);
   }

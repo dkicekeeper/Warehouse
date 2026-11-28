@@ -1,6 +1,7 @@
 // Webhook bodies cut down to the fields the service reads. Shapes follow GitHub's webhook docs.
 
 export const repository = (over: Record<string, unknown> = {}) => ({
+  id: 1001,
   full_name: 'dkicekeeper/Platina',
   name: 'Platina',
   default_branch: 'main',
@@ -70,4 +71,11 @@ export const pushEvent = (over: Record<string, unknown> = {}) => ({
 export const installationReposEvent = (names: string[]) => ({
   action: 'added',
   repositories_added: names.map((full_name) => ({ full_name, name: full_name.split('/')[1] })),
+});
+
+/** The owner renamed a repository on GitHub: the payload names it anew, the old name is in changes. */
+export const repositoryRenamedEvent = (from: string, to: string, id = 1001) => ({
+  action: 'renamed',
+  changes: { repository: { name: { from } } },
+  repository: repository({ id, full_name: `dkicekeeper/${to}`, name: to }),
 });

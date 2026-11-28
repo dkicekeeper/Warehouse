@@ -77,6 +77,14 @@ export interface Store {
   patchPr(repo: string, number: number, patch: PrPatch): Promise<void>;
   /** «Can merge» of every open PR of the repository becomes unknown: its default branch moved. */
   forgetMergeable(repo: string): Promise<void>;
+  /** The stored repository with this GitHub id, under whatever name it was stored. */
+  getRepoByGithubId(githubId: number): Promise<Repo | null>;
+  setRepoGithubId(fullName: string, githubId: number): Promise<void>;
+  /**
+   * The owner renamed a repository: everything stored under the old name moves to the new one,
+   * and the repository keeps its project.
+   */
+  renameRepo(from: string, to: string): Promise<void>;
   upsertRun(run: Run): Promise<void>;
   upsertJob(job: Job): Promise<void>;
   /** Registers a repository; a repository nobody has seen gets a project named `projectName`. */

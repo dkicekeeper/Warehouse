@@ -8,6 +8,7 @@ import {
   pullRequestEvent,
   pushEvent,
   repository,
+  repositoryRenamedEvent,
   workflowJobEvent,
   workflowRunEvent,
 } from '../fixtures/github';
@@ -271,5 +272,47 @@ describe('push before the docs migration has run', () => {
     await store.ensureRepo(REPO, 'claude/infotip-a1', 'Platina');
     await applyGithubEvent(broken, 'push', pushEvent(), NOW);
     expect(await store.getPr(REPO, 3)).toMatchObject({ headSha: 'bbb222', checks: 'pending' });
+  });
+});
+
+describe('a renamed repository', () => {
+  const NEW = 'dkicekeeper/PSPlatina';
+
+  async function stocked() {
+    await apply('pull_request', pullRequestEvent('opened'));
+    await apply('workflow_run', workflowRunEvent('completed'));
+    return (await store.getRepo(REPO))!;
+  }
+
+  it('the renamed event moves its PRs and runs to the new name and keeps its project', async () => {
+    const before = await stocked();
+    await apply('repository', repositoryRenamedEvent('Platina', 'PSPlatina'));
+    expect(await store.getRepo(REPO)).toBeNull();
+    expect(await store.getRepo(NEW)).toMatchObject({ projectId: before.projectId });
+    expect(await store.getPr(NEW, 3)).not.toBeNull();
+    expect(await store.getRun(9001)).toMatchObject({ repo: NEW });
+    const snap = await store.loadSnapshot(NOW);
+    expect(snap.projects).toHaveLength(1);
+  });
+
+  it('an event under the new name before the renamed event is recognised by the repository id', async () => {
+    const before = await stocked();
+    const underNewName = {
+      ...pullRequestEvent('opened', { number: 4, head: { ref: 'claude/x', sha: 'ddd444' } }),
+      repository: repository({ full_name: NEW, name: 'PSPlatina' }),
+    };
+    await apply('pull_request', underNewName);
+    expect(await store.getRepo(REPO)).toBeNull();
+    expect(await store.getRepo(NEW)).toMatchObject({ projectId: before.projectId });
+    expect(await store.getPr(NEW, 3)).not.toBeNull();
+    expect(await store.getPr(NEW, 4)).not.toBeNull();
+    expect((await store.loadSnapshot(NOW)).projects).toHaveLength(1);
+  });
+
+  it('a different repository with a different id stays a different repository', async () => {
+    await stocked();
+    await apply('installation_repositories', { action: 'added', repositories_added: [{ id: 2002, full_name: 'dkicekeeper/Other', name: 'Other' }] });
+    expect(await store.getRepo(REPO)).not.toBeNull();
+    expect(await store.getRepo('dkicekeeper/Other')).not.toBeNull();
   });
 });
