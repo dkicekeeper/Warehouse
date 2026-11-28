@@ -1,0 +1,12 @@
+{
+  "object": "chart_data", "category": "revenue", "display_type": "line", "display_name": "Revenue",
+  "resolution": "day", "yaxis_currency": "USD", "yaxis": "$",
+  "measures": [
+    { "id": "transactions", "display_name": "Transactions", "unit": "#", "chartable": true },
+    { "id": "revenue", "display_name": "Revenue", "unit": "$", "chartable": true }
+  ],
+  "values": [
+    { "cohort": 1795132800, "measure": 0, "value": 1, "incomplete": false },
+    { "cohort": 1795132800, "measure": 1, "value": 12.99, "incomplete": false }
+  ]
+}

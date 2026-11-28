@@ -1,0 +1,10 @@
+{
+  "object": "chart_data", "category": "trials", "display_type": "bar", "display_name": "New Trials",
+  "resolution": "day", "yaxis_currency": "USD", "yaxis": "#",
+  "measures": [{ "id": "trials", "display_name": "New Trials", "unit": "#", "chartable": true }],
+  "values": [
+    { "cohort": 1795132800, "measure": 0, "value": 2, "incomplete": false },
+    { "cohort": 1795219200, "measure": 0, "value": 0, "incomplete": false },
+    { "cohort": 1795305600, "measure": 0, "value": 1, "incomplete": true }
+  ]
+}
