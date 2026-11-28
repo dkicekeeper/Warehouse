@@ -105,25 +105,35 @@ describe('medianDurationMin', () => {
 describe('observeLimit', () => {
   const running = (n: number) => Array.from({ length: n }, () => active('in_progress').job);
   const queued = active('queued').job;
+  /** A finished mac job that ran from `from` to `to` minutes ago, created `wait` minutes before it started. */
+  const done = (from: number, to: number, wait = 0) =>
+    job({ createdAt: minutesAgo(from + wait), startedAt: minutesAgo(from), completedAt: minutesAgo(to) });
 
   it('learns the limit from what runs while something waits', () => {
-    expect(observeLimit([...running(3), queued], null)).toBe(3);
+    expect(observeLimit([...running(3), queued], [], null)).toBe(3);
   });
 
-  it('only grows', () => {
-    expect(observeLimit([...running(2), queued], 5)).toBe(5);
-    expect(observeLimit([...running(5), queued], 2)).toBe(5);
+  it('learns it from the last days of finished jobs too: what ran just before a waiting job started', () => {
+    // Two jobs ran 60→20 minutes ago; a third waited 30 minutes and started when the first ended.
+    const history = [done(60, 20), done(60, 30), done(30, 5, 30)];
+    expect(observeLimit([], history, null)).toBe(2);
   });
 
-  it('learns nothing when nothing waits, or when nothing runs', () => {
-    expect(observeLimit(running(4), null)).toBeNull();
-    expect(observeLimit(running(4), 2)).toBe(2);
-    expect(observeLimit([queued], null)).toBeNull();
+  it('follows the recent window down: a smaller limit seen lately replaces a larger old one', () => {
+    const history = [done(60, 20), done(60, 30), done(30, 5, 30)];
+    expect(observeLimit([], history, 5)).toBe(2);
+    expect(observeLimit([...running(4), queued], history, 2)).toBe(4);
+  });
+
+  it('keeps what it knew when the window shows no waiting at all', () => {
+    expect(observeLimit(running(4), [done(60, 20), done(50, 10)], 3)).toBe(3);
+    expect(observeLimit(running(4), [], null)).toBeNull();
+    expect(observeLimit([queued], [], null)).toBeNull();
   });
 
   it('ignores linux jobs', () => {
     const linux = active('in_progress', { job: { labels: ['ubuntu-latest'] } }).job;
-    expect(observeLimit([linux, linux, ...running(1), queued], null)).toBe(1);
+    expect(observeLimit([linux, linux, ...running(1), queued], [], null)).toBe(1);
   });
 });
 

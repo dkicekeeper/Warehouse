@@ -27,10 +27,15 @@ export async function recompute(
   const { now, notifier, baseUrl } = deps;
   const result: RecomputeResult = { sent: 0, edited: 0, failed: 0 };
 
-  const [snap, settings, before] = await Promise.all([store.loadSnapshot(now), store.getSettings(), store.loadItems()]);
+  const [snap, settings, before, history] = await Promise.all([
+    store.loadSnapshot(now),
+    store.getSettings(),
+    store.loadItems(),
+    store.loadJobHistory(now),
+  ]);
   await store.applyItemChanges(reconcileItems(before, computeAttention(snap, now, settings), now), now);
 
-  const observed = observeLimit(snap.jobs, settings.observedMacosLimit);
+  const observed = observeLimit(snap.jobs, history, settings.observedMacosLimit);
   if (observed !== settings.observedMacosLimit) await store.patchSettings({ observedMacosLimit: observed });
 
   const chatId = settings.telegramChatId;

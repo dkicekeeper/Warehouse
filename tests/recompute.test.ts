@@ -223,7 +223,7 @@ describe('recompute', () => {
     expect(await store.loadItems()).toHaveLength(1);
   });
 
-  it('remembers the highest number of mac jobs seen running while one waited', async () => {
+  it('learns the number of mac jobs that run while one waits', async () => {
     const live = { conclusion: null, completedAt: null };
     const r = run({ status: 'in_progress', ...live });
     await store.upsertRun(r);

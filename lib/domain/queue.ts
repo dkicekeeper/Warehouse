@@ -45,14 +45,30 @@ export function medianDurationMin(history: Job[]): number | null {
 
 /**
  * The account's concurrency limit is not documented for the runner image in use, so it is learnt:
- * whatever number of mac jobs runs while another one waits is a lower bound on it.
+ * whatever number of mac jobs runs while another one waits is a lower bound on it. It is read from
+ * the live jobs and from the finished jobs of the last days (`history`), so a limit GitHub lowers
+ * shows up within that window; with no waiting seen in it, what was known stays.
  */
-export function observeLimit(jobs: Job[], prev: number | null): number | null {
-  const mac = jobs.filter((j) => isMacJob(j.labels));
-  const running = mac.filter((j) => j.status === 'in_progress').length;
-  const waiting = mac.some((j) => j.status === 'queued');
-  if (!waiting || running === 0) return prev;
-  return Math.max(prev ?? 0, running);
+export function observeLimit(live: Job[], history: Job[], prev: number | null): number | null {
+  const mac = live.filter((j) => isMacJob(j.labels));
+  const liveRunning = mac.filter((j) => j.status === 'in_progress').length;
+  const liveSeen = mac.some((j) => j.status === 'queued') && liveRunning > 0 ? liveRunning : 0;
+
+  const done = history.filter((j) => isMacJob(j.labels) && j.startedAt && j.completedAt);
+  let pastSeen = 0;
+  for (const w of done) {
+    const started = (w.startedAt as Date).getTime();
+    // A job that waited at least a minute: what ran just before it started was the account's fill.
+    if (started - w.createdAt.getTime() < MINUTE) continue;
+    const t = started - 1;
+    const running = done.filter(
+      (j) => j !== w && (j.startedAt as Date).getTime() <= t && (j.completedAt as Date).getTime() > t,
+    ).length;
+    pastSeen = Math.max(pastSeen, running);
+  }
+
+  const seen = Math.max(liveSeen, pastSeen);
+  return seen > 0 ? seen : prev;
 }
 
 export interface QueueRow {
