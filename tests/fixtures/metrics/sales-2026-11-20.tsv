@@ -1,0 +1,8 @@
+Provider	Provider Country	SKU	Developer	Title	Version	Product Type Identifier	Units	Developer Proceeds	Begin Date	End Date	Customer Currency	Country Code	Currency of Proceeds	Apple Identifier	Customer Price	Promo Code	Parent Identifier	Subscription	Period
+APPLE	US	tenra	Owner	Tenra	1.9	1F	12	0	11/20/2026	11/20/2026	KZT	KZ	KZT	6761530361	0				
+APPLE	US	tenra	Owner	Tenra	1.9	1F	3	0	11/20/2026	11/20/2026	USD	US	USD	6761530361	0				
+APPLE	US	tenra	Owner	Tenra	1.9	3F	2	0	11/20/2026	11/20/2026	KZT	KZ	KZT	6761530361	0				
+APPLE	US	tenra	Owner	Tenra	1.9	1F	-1	0	11/20/2026	11/20/2026	USD	US	USD	6761530361	0				
+APPLE	US	tenra.pro.annual	Owner	Tenra Pro		IAY	1	9.10	11/20/2026	11/20/2026	USD	US	USD	6761600000	12.99		tenra	Renewal	1 Year
+APPLE	US	dalada	Owner	Dalada	1.0.4	1	4	0	11/20/2026	11/20/2026	KZT	KZ	KZT	6817603558	0				
+APPLE	US	dalada	Owner	Dalada	1.0.4	3T	1	0	11/20/2026	11/20/2026	KZT	KZ	KZT	6817603558	0				
