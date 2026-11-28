@@ -1,8 +1,8 @@
 ---
-status: in-progress
+status: done
 kind: plan
 created: 2026-11-27
-updated: 2026-11-27
+updated: 2026-11-28
 approved: 2026-11-27
 tasks: [2026-11-26-guidelines]
 ---
@@ -110,7 +110,7 @@ export function proposeUrl(rule: GuideRule | null, guide: Guide, today: string):
 
 Пройти шесть репозиториев по `audit.md`: `lint.py`, правила «на аудите». Расхождения — задачи
 в `docs/backlog/` проектов (PR с одними документами, по одному на репозиторий, мерж после
-зелёного CI); предложения поменять правила — задачи в Warehouse. Итог — `docs/archive/audit-2026-11-27.md` (сводка:
+зелёного CI); предложения поменять правила — задачи в Warehouse. Итог — `docs/archive/audit-2026-11-28.md` (сводка:
 проверено, найдено, ссылки) и сообщение сессии.
 
 ### Задача 6. Документы и выкладка

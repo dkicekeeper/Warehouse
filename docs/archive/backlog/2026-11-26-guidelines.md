@@ -1,11 +1,12 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: 2
 size: l
 created: 2026-11-26
-updated: 2026-11-27
+updated: 2026-11-28
 plan: plans/2026-11-27-guidelines.md
+pr: 12
 branch: claude/wizardly-ptolemy-l81oa3
 ---
 # Гайдлайны: один свод правил для владельца и агентов
@@ -19,4 +20,5 @@ branch: claude/wizardly-ptolemy-l81oa3
 - блок в CLAUDE.md проектов собирается из гайдлайнов, тест сверяет номера;
 - первый аудит шести репозиториев проведён, расхождения записаны задачами.
 
-Заметки: дизайн — [plans/2026-11-26-guidelines-design.md](../plans/2026-11-26-guidelines-design.md).
+Заметки: дизайн — [plans/2026-11-26-guidelines-design.md](../plans/2026-11-26-guidelines-design.md),
+первый аудит — [audit-2026-11-28.md](../audit-2026-11-28.md).

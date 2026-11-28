@@ -1,8 +1,8 @@
 ---
-status: approved
+status: done
 kind: design
 created: 2026-11-26
-updated: 2026-11-27
+updated: 2026-11-28
 approved: 2026-11-27
 tasks: [2026-11-26-guidelines]
 ---
