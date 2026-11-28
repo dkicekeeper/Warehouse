@@ -351,6 +351,19 @@ export class PgStore implements Store {
     return { earliest: str(r?.earliest), latest: str(r?.latest) };
   }
 
+  async getMetricBackfill(source: MetricSource): Promise<string | null> {
+    const [r] = await this.sql.query("select to_char(backfilled_from, 'YYYY-MM-DD') as d from metric_backfill where source = $1", [source]);
+    return str(r?.d);
+  }
+
+  async setMetricBackfill(source: MetricSource, from: string): Promise<void> {
+    await this.sql.query(
+      `insert into metric_backfill (source, backfilled_from) values ($1, $2::date)
+       on conflict (source) do update set backfilled_from = excluded.backfilled_from`,
+      [source, from],
+    );
+  }
+
   async getSources(): Promise<SourceHealth[]> {
     const rows = await this.sql.query('select * from sources order by source');
     return rows.map((r) => ({

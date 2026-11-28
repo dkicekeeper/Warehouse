@@ -275,3 +275,24 @@ describe('tick: project documents come last', () => {
     expect(order).toEqual(['recompute', 'docs']);
   });
 });
+
+describe('tick collects metrics', () => {
+  it('runs the collector and answers with its statuses only', async () => {
+    const res = await tick({
+      metrics: {
+        revenuecat: null,
+        ads: null,
+        appstore: { fetchDay: async (d) => [{ app: '1', source: 'appstore_sales', metric: 'installs', day: d, value: 42, unit: 'count' }] },
+      },
+    });
+    const body = (await res.json()) as { metrics?: Record<string, string> };
+    expect(body.metrics).toEqual({ revenuecat: 'not configured', appstore_sales: 'ok', apple_ads: 'not configured' });
+    expect(JSON.stringify(body)).not.toContain('42');
+    expect((await store.loadMetricDays('2026-01-01')).length).toBeGreaterThan(0);
+  });
+
+  it('a tick without metric clients skips them', async () => {
+    const body = (await (await tick()).json()) as { metrics?: unknown };
+    expect(body.metrics).toBe('not configured');
+  });
+});

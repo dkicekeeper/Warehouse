@@ -117,6 +117,9 @@ export interface Store {
   loadMetricDays(from: string): Promise<MetricDay[]>;
   /** The first and last day a source has data for. */
   metricCoverage(source: MetricSource): Promise<{ earliest: string | null; latest: string | null }>;
+  /** The earliest day a source has been read back to (YYYY-MM-DD), or null before its first collection. */
+  getMetricBackfill(source: MetricSource): Promise<string | null>;
+  setMetricBackfill(source: MetricSource, from: string): Promise<void>;
   recordEvent(source: SourceName, deliveryId: string, payload: unknown, now: Date): Promise<'new' | 'duplicate'>;
   /** Forgets a delivery whose apply failed, so the sender's retry is applied, not dropped as a duplicate. */
   forgetEvent(source: SourceName, deliveryId: string): Promise<void>;

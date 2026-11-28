@@ -357,3 +357,13 @@ describe('metric settings', () => {
     });
   });
 });
+
+describe('metric backfill', () => {
+  it('is unknown before the first collection, then remembers the earliest day read', async () => {
+    expect(await store.getMetricBackfill('appstore_sales')).toBeNull();
+    await store.setMetricBackfill('appstore_sales', '2026-11-10');
+    await store.setMetricBackfill('appstore_sales', '2026-10-27');
+    expect(await store.getMetricBackfill('appstore_sales')).toBe('2026-10-27');
+    expect(await store.getMetricBackfill('apple_ads')).toBeNull();
+  });
+});

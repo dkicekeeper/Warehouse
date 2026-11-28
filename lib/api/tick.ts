@@ -1,5 +1,6 @@
 import { verifyBearer } from '@/lib/auth/bearer';
 import type { GithubApp } from '@/lib/github/app';
+import { collectMetrics, type MetricClients } from '@/lib/metrics/collect';
 import type { RecomputeResult } from '@/lib/recompute';
 import type { Store } from '@/lib/store/store';
 
@@ -11,6 +12,8 @@ export interface TickDeps {
   recompute: () => Promise<RecomputeResult>;
   /** Brings the database schema up to date; returns the migrations it applied. */
   migrate: () => Promise<string[]>;
+  /** Clients of the metric sources whose keys are set; absent, metrics are not collected. */
+  metrics?: MetricClients;
 }
 
 const MINUTE = 60_000;
@@ -50,9 +53,16 @@ export async function tickIfDue(deps: Omit<TickDeps, 'token'>): Promise<boolean>
 
 async function runTick(deps: Omit<TickDeps, 'token'>): Promise<Response> {
   const { store, now } = deps;
-  const out: { migrated?: string[]; docs?: string; resync: string; recompute: RecomputeResult | string } = {
+  const out: {
+    migrated?: string[];
+    docs?: string;
+    resync: string;
+    recompute: RecomputeResult | string;
+    metrics: Record<string, string> | string;
+  } = {
     resync: 'skipped',
     recompute: 'not run',
+    metrics: 'not configured',
   };
 
   // Nothing else can work on a database without its tables, so this comes first and is fatal.
@@ -103,6 +113,16 @@ async function runTick(deps: Omit<TickDeps, 'token'>): Promise<Response> {
   } catch (err) {
     out.recompute = message(err);
     status = 500;
+  }
+
+  // Metrics: each source once a day, statuses only in the answer (tick.yml must not print numbers,
+  // and these carry none). Before the documents, whose first read can be long.
+  if (deps.metrics) {
+    try {
+      out.metrics = await collectMetrics(store, now, deps.metrics);
+    } catch (err) {
+      out.metrics = message(err);
+    }
   }
 
   // What the repositories say about themselves (the project standard): the marked ones every

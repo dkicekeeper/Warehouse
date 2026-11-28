@@ -1,5 +1,6 @@
 import { tickIfDue, type TickDeps } from '@/lib/api/tick';
 import { githubApp } from '@/lib/github/app';
+import { metricClients } from '@/lib/metrics/collect';
 import { recompute, type Notifier, type RecomputeResult } from '@/lib/recompute';
 import { getSql, getStore } from '@/lib/store/db';
 import { migrate } from '@/lib/store/migrations';
@@ -40,6 +41,7 @@ export function tickDeps(now: Date = new Date()): Omit<TickDeps, 'token'> {
     now,
     github: githubApp(),
     recompute: () => runRecompute(now),
+    metrics: metricClients(),
     migrate: async () => {
       if (migrated) return [];
       const applied = await migrate(getSql());

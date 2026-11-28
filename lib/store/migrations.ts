@@ -220,6 +220,12 @@ create table metric_days (
 );
 create index metric_days_day on metric_days (day);
 alter table metric_days enable row level security;
+-- How far back each source has been read: the first collection goes back 180 days over several ticks.
+create table metric_backfill (
+  source text primary key,
+  backfilled_from date not null
+);
+alter table metric_backfill enable row level security;
 alter table settings add column metrics_trial_cost_limit numeric not null default 15;
 alter table settings add column metrics_in_digest boolean not null default true;
 alter table settings add column revenuecat_projects text not null default '{}'
