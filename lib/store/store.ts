@@ -75,6 +75,8 @@ export interface Store {
    * never overwrite each other's fields with a stale copy.
    */
   patchPr(repo: string, number: number, patch: PrPatch): Promise<void>;
+  /** «Can merge» of every open PR of the repository becomes unknown: its default branch moved. */
+  forgetMergeable(repo: string): Promise<void>;
   upsertRun(run: Run): Promise<void>;
   upsertJob(job: Job): Promise<void>;
   /** Registers a repository; a repository nobody has seen gets a project named `projectName`. */

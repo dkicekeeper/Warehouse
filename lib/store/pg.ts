@@ -458,6 +458,10 @@ export class PgStore implements Store {
     );
   }
 
+  async forgetMergeable(repo: string): Promise<void> {
+    await this.sql.query("update pull_requests set mergeable = null where repo = $1 and state = 'open'", [repo]);
+  }
+
   async patchPr(repo: string, number: number, patch: PrPatch): Promise<void> {
     const columns: Record<keyof PrPatch, string> = { checks: 'checks', headSha: 'head_sha', mergeable: 'mergeable', sessionId: 'session_id' };
     const keys = (Object.keys(patch) as (keyof PrPatch)[]).filter((k) => k in columns);

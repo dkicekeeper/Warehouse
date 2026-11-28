@@ -215,7 +215,12 @@ export async function applyGithubEvent(store: Store, event: string, payload: unk
       // A push to the default branch may have changed the project's docs: read them at the next tick.
       const known = await store.getRepo(repo);
       // Never at the price of the push itself: the half-hourly full read covers a mark that failed.
-      if (known && known.defaultBranch === branch) await store.markDocsDirty(repo).catch(() => {});
+      if (known && known.defaultBranch === branch) {
+        await store.markDocsDirty(repo).catch(() => {});
+        // GitHub computes «can merge» lazily and does not resend it when the base moves: until the
+        // resync reads each PR again, it is unknown, and no PR shows «готов к мержу» on a stale value.
+        await store.forgetMergeable(repo);
+      }
       const pr = await store.findOpenPr(repo, branch);
       if (!pr || pr.headSha === push.data.after) return;
       // The pull_request event with the details follows; until then nothing about the new head is known.

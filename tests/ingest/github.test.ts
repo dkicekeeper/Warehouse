@@ -189,6 +189,20 @@ describe('push to the default branch', () => {
     await apply('push', pushEvent({ ref: 'refs/heads/main' }));
     expect((await store.listDocsState()).find((r) => r.repo === repo!.repo)?.dirty).toBe(true);
   });
+
+  it('makes «can merge» of the open PRs unknown again: main moved under them', async () => {
+    await store.ensureRepo(REPO, 'main', 'Platina');
+    await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
+    await apply('push', pushEvent({ ref: 'refs/heads/main', after: 'ccc333' }));
+    expect(await store.getPr(REPO, 3)).toMatchObject({ mergeable: null, headSha: 'aaa111' });
+  });
+
+  it('a push to another branch leaves «can merge» of other PRs as it was', async () => {
+    await store.ensureRepo(REPO, 'main', 'Platina');
+    await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
+    await apply('push', pushEvent({ ref: 'refs/heads/claude/side', after: 'ccc333' }));
+    expect(await store.getPr(REPO, 3)).toMatchObject({ mergeable: true });
+  });
 });
 
 describe('push', () => {
@@ -207,7 +221,7 @@ describe('push', () => {
   it('that deletes the branch, or goes to a branch without a PR, is ignored', async () => {
     await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
     await apply('push', pushEvent({ deleted: true, after: '0000000000000000000000000000000000000000' }));
-    await apply('push', pushEvent({ ref: 'refs/heads/main' }));
+    await apply('push', pushEvent({ ref: 'refs/heads/claude/no-pr' }));
     await apply('push', pushEvent({ ref: 'refs/tags/v1.0' }));
     expect(await store.getPr(REPO, 3)).toMatchObject({ headSha: 'aaa111', mergeable: true });
   });
