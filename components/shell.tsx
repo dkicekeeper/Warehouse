@@ -1,6 +1,6 @@
 'use client';
 
-import { FolderKanban, LayoutDashboard, ListTodo, LineChart, Settings } from 'lucide-react';
+import { BookOpen, FolderKanban, LayoutDashboard, ListTodo, LineChart, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
@@ -18,6 +18,7 @@ const NAV = [
   { href: '/', label: 'Обзор', short: 'Обзор', icon: LayoutDashboard },
   { href: '/projects', label: 'Проекты', short: 'Проекты', icon: FolderKanban },
   { href: '/backlog', label: 'Задачи и планы', short: 'Задачи', icon: ListTodo },
+  { href: '/guides', label: 'Гайдлайны', short: 'Правила', icon: BookOpen },
   { href: '/settings', label: 'Настройки', short: 'Настройки', icon: Settings },
 ] as const;
 
@@ -120,7 +121,7 @@ function TabBar() {
   return (
     <nav
       aria-label="Разделы"
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
     >
       {NAV.map(({ href, short, icon: Icon }) => {
         const active = href === '/' ? path === '/' : path.startsWith(href);
