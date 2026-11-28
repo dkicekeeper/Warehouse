@@ -163,11 +163,31 @@ describe('nextMorning', () => {
 describe('POST /api/runs/:id/cancel', () => {
   const live = { conclusion: null, completedAt: null };
 
-  it('cancels a queued or running run through the GitHub App', async () => {
+  it('cancels a queued run through the GitHub App', async () => {
     await store.upsertRun(run({ id: 9002, repo: 'o/r', status: 'queued', ...live }));
     const res = await handleCancelRun('9002', deps());
     expect(res.status).toBe(204);
     expect(cancelled).toEqual(['o/r#9002']);
+  });
+
+  it('a running run that nothing newer replaces → 409, nothing sent: the page offers no cancel for it', async () => {
+    await store.upsertRun(run({ id: 9003, status: 'in_progress', ...live }));
+    expect((await handleCancelRun('9003', deps())).status).toBe(409);
+    expect(cancelled).toEqual([]);
+  });
+
+  it('a run GitHub calls running but whose mac job still waits for a runner can be cancelled', async () => {
+    await store.upsertRun(run({ id: 9006, status: 'in_progress', ...live }));
+    await store.upsertJob(job({ id: 96, runId: 9006, status: 'queued', conclusion: null, startedAt: null, completedAt: null }));
+    expect((await handleCancelRun('9006', deps())).status).toBe(204);
+    expect(cancelled).toEqual(['o/r#9006']);
+  });
+
+  it('a running run made stale by a newer push on its branch can be cancelled', async () => {
+    await store.upsertRun(run({ id: 9004, status: 'in_progress', headSha: 'old', createdAt: minutesAgo(30), ...live }));
+    await store.upsertRun(run({ id: 9005, status: 'queued', headSha: 'new', createdAt: minutesAgo(5), ...live }));
+    expect((await handleCancelRun('9004', deps())).status).toBe(204);
+    expect(cancelled).toEqual(['o/r#9004']);
   });
 
   it('a finished run → 409, nothing sent to GitHub', async () => {
@@ -182,7 +202,7 @@ describe('POST /api/runs/:id/cancel', () => {
   });
 
   it('GitHub refusing → 502 with the reason', async () => {
-    await store.upsertRun(run({ id: 9002, status: 'in_progress', ...live }));
+    await store.upsertRun(run({ id: 9002, status: 'queued', ...live }));
     const d = deps();
     d.github!.cancelRun = async () => {
       throw new Error('GitHub POST /repos/o/r/actions/runs/9002/cancel → 409 Cannot cancel a workflow run that is completed');

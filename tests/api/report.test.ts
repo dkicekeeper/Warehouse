@@ -80,6 +80,9 @@ describe('POST /api/report/session', () => {
     ['not JSON', 'oops'],
     ['a missing session id', report({ session_id: undefined })],
     ['an empty session id', report({ session_id: '' })],
+    ['a session id with markup', report({ session_id: 'session_<script>' })],
+    ['a session id with spaces', report({ session_id: 'session 1' })],
+    ['a session id that is neither session_… nor a UUID', report({ session_id: '../../etc' })],
     ['a repository that is not owner/name', report({ repo: 'https://github.com/a/b' })],
     ['a message tail over 4000 characters', report({ message_tail: 'x'.repeat(4001) })],
     ['a date that is not a date', report({ sent_at: 'yesterday' })],
@@ -87,6 +90,11 @@ describe('POST /api/report/session', () => {
     const res = await handleSessionReport(post(body), deps());
     expect(res.status).toBe(400);
     expect(await store.getSession('session_016AbC')).toBeNull();
+  });
+
+  it('accepts the id of a local session, a UUID', async () => {
+    const res = await handleSessionReport(post(report({ session_id: '20e570d0-daba-559b-8477-09337c2e3975' })), deps());
+    expect(res.status).toBe(204);
   });
 
   it('accepts a session with no repository', async () => {
@@ -127,6 +135,14 @@ describe('POST /api/report/sessions', () => {
     expect(await store.getSession('session_2')).toMatchObject({ title: 'S2' });
     expect(await store.getSources()).toMatchObject([{ source: 'reconcile', lastOkAt: NOW }]);
     expect(after).toBe(1);
+  });
+
+  it('one session with an odd id is dropped; the rest of the batch is stored', async () => {
+    const b = batch(2);
+    b.sessions[0]!.session_id = 'session_../../x';
+    expect((await handleReconcile(post(b), deps())).status).toBe(204);
+    expect(await store.getSession('session_1')).toMatchObject({ title: 'S1' });
+    expect(await store.getSession('session_../../x')).toBeNull();
   });
 
   it('marks the hook source unhealthy when sessions changed without reporting', async () => {

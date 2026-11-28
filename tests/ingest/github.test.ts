@@ -8,6 +8,7 @@ import {
   pullRequestEvent,
   pushEvent,
   repository,
+  repositoryRenamedEvent,
   workflowJobEvent,
   workflowRunEvent,
 } from '../fixtures/github';
@@ -189,6 +190,20 @@ describe('push to the default branch', () => {
     await apply('push', pushEvent({ ref: 'refs/heads/main' }));
     expect((await store.listDocsState()).find((r) => r.repo === repo!.repo)?.dirty).toBe(true);
   });
+
+  it('makes «can merge» of the open PRs unknown again: main moved under them', async () => {
+    await store.ensureRepo(REPO, 'main', 'Platina');
+    await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
+    await apply('push', pushEvent({ ref: 'refs/heads/main', after: 'ccc333' }));
+    expect(await store.getPr(REPO, 3)).toMatchObject({ mergeable: null, headSha: 'aaa111' });
+  });
+
+  it('a push to another branch leaves «can merge» of other PRs as it was', async () => {
+    await store.ensureRepo(REPO, 'main', 'Platina');
+    await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
+    await apply('push', pushEvent({ ref: 'refs/heads/claude/side', after: 'ccc333' }));
+    expect(await store.getPr(REPO, 3)).toMatchObject({ mergeable: true });
+  });
 });
 
 describe('push', () => {
@@ -207,7 +222,7 @@ describe('push', () => {
   it('that deletes the branch, or goes to a branch without a PR, is ignored', async () => {
     await apply('pull_request', pullRequestEvent('opened', { mergeable: true }));
     await apply('push', pushEvent({ deleted: true, after: '0000000000000000000000000000000000000000' }));
-    await apply('push', pushEvent({ ref: 'refs/heads/main' }));
+    await apply('push', pushEvent({ ref: 'refs/heads/claude/no-pr' }));
     await apply('push', pushEvent({ ref: 'refs/tags/v1.0' }));
     expect(await store.getPr(REPO, 3)).toMatchObject({ headSha: 'aaa111', mergeable: true });
   });
@@ -257,5 +272,78 @@ describe('push before the docs migration has run', () => {
     await store.ensureRepo(REPO, 'claude/infotip-a1', 'Platina');
     await applyGithubEvent(broken, 'push', pushEvent(), NOW);
     expect(await store.getPr(REPO, 3)).toMatchObject({ headSha: 'bbb222', checks: 'pending' });
+  });
+});
+
+describe('a renamed repository', () => {
+  const NEW = 'dkicekeeper/PSPlatina';
+
+  async function stocked() {
+    await apply('pull_request', pullRequestEvent('opened'));
+    await apply('workflow_run', workflowRunEvent('completed'));
+    return (await store.getRepo(REPO))!;
+  }
+
+  it('the renamed event moves its PRs and runs to the new name and keeps its project', async () => {
+    const before = await stocked();
+    await apply('repository', repositoryRenamedEvent('Platina', 'PSPlatina'));
+    expect(await store.getRepo(REPO)).toBeNull();
+    expect(await store.getRepo(NEW)).toMatchObject({ projectId: before.projectId });
+    expect(await store.getPr(NEW, 3)).not.toBeNull();
+    expect(await store.getRun(9001)).toMatchObject({ repo: NEW });
+    const snap = await store.loadSnapshot(NOW);
+    expect(snap.projects).toHaveLength(1);
+  });
+
+  it('an event under the new name before the renamed event is recognised by the repository id', async () => {
+    const before = await stocked();
+    const underNewName = {
+      ...pullRequestEvent('opened', { number: 4, head: { ref: 'claude/x', sha: 'ddd444' } }),
+      repository: repository({ full_name: NEW, name: 'PSPlatina' }),
+    };
+    await apply('pull_request', underNewName);
+    expect(await store.getRepo(REPO)).toBeNull();
+    expect(await store.getRepo(NEW)).toMatchObject({ projectId: before.projectId });
+    expect(await store.getPr(NEW, 3)).not.toBeNull();
+    expect(await store.getPr(NEW, 4)).not.toBeNull();
+    expect((await store.loadSnapshot(NOW)).projects).toHaveLength(1);
+  });
+
+  it('keeps the project documents and the items of the repository under the new name', async () => {
+    await stocked();
+    const doc = {
+      repo: REPO, path: 'docs/project.md', kind: 'project' as const, id: 'project', title: 'Platina',
+      status: 'development', fields: {}, body: '', blobSha: 'a',
+    };
+    await store.replaceRepoDocs(REPO, [doc], 't1', NOW);
+    await store.applyItemChanges(
+      {
+        insert: [{ key: `pr:${REPO}#3`, kind: 'pr_ready', level: 'request', projectId: null, text: 'PR #3', sessionId: null, pr: { repo: REPO, number: 3 }, repo: REPO, since: NOW }],
+        update: [],
+      },
+      NOW,
+    );
+    await apply('repository', repositoryRenamedEvent('Platina', 'PSPlatina'));
+    expect((await store.listRepoDocs(NEW)).map((d) => d.path)).toEqual(['docs/project.md']);
+    expect((await store.listDocsState()).find((d) => d.repo === NEW)).toMatchObject({ dirty: true, treeSha: 't1' });
+    const items = await store.loadItems();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ key: `pr:${NEW}#3`, repo: NEW, pr: { repo: NEW, number: 3 } });
+  });
+
+  it('before the id column exists, events still register the repository by name', async () => {
+    const noIdColumn = Object.assign(Object.create(store), {
+      getRepoByGithubId: () => Promise.reject(new Error('column "github_id" does not exist')),
+      setRepoGithubId: () => Promise.reject(new Error('column "github_id" does not exist')),
+    });
+    await applyGithubEvent(noIdColumn, 'pull_request', pullRequestEvent('opened'), NOW);
+    expect(await store.getPr(REPO, 3)).not.toBeNull();
+  });
+
+  it('a different repository with a different id stays a different repository', async () => {
+    await stocked();
+    await apply('installation_repositories', { action: 'added', repositories_added: [{ id: 2002, full_name: 'dkicekeeper/Other', name: 'Other' }] });
+    expect(await store.getRepo(REPO)).not.toBeNull();
+    expect(await store.getRepo('dkicekeeper/Other')).not.toBeNull();
   });
 });

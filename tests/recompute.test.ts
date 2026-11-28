@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { recompute, type Notifier } from '@/lib/recompute';
+import { MessageGone } from '@/lib/telegram/client';
 import type { PgStore } from '@/lib/store/pg';
 import { testStore } from './helpers/db';
 import { NOW, job, minutesAgo, minutesFromNow, pr, run, session } from './helpers/factories';
@@ -10,6 +11,8 @@ class FakeNotifier implements Notifier {
   sent: { chatId: string; html: string }[] = [];
   edits: { messageId: number; html: string }[] = [];
   failing = false;
+  gone = false;
+  editTries = 0;
   private nextId = 100;
   async send(chatId: string, html: string) {
     if (this.failing) throw new Error('telegram 429: Too Many Requests');
@@ -17,6 +20,8 @@ class FakeNotifier implements Notifier {
     return { messageId: this.nextId++ };
   }
   async edit(_chatId: string, messageId: number, html: string) {
+    this.editTries++;
+    if (this.gone) throw new MessageGone();
     if (this.failing) throw new Error('telegram 500');
     this.edits.push({ messageId, html });
   }
@@ -146,6 +151,20 @@ describe('recompute', () => {
     expect(await go(minutesFromNow(2))).toMatchObject({ edited: 0 });
   });
 
+  it('a message the owner deleted is let go after one try, not edited again every minute', async () => {
+    const s = asking();
+    await store.upsertSession(s);
+    await go();
+    notifier.gone = true;
+    await store.upsertSession({ id: s.id, stateText: 'смержить PR #4', reportedAt: NOW });
+    expect(await go(minutesFromNow(1))).toEqual({ sent: 0, edited: 0, failed: 0 });
+    await store.upsertSession({ id: s.id, stateText: 'смержить PR #5', reportedAt: NOW });
+    await go(minutesFromNow(2));
+    await go(minutesFromNow(3));
+    expect(notifier.editTries).toBe(1);
+    expect(notifier.sent).toHaveLength(1);
+  });
+
   it('a dismissed item stays quiet until the session says something new', async () => {
     const s = asking();
     await store.upsertSession(s);
@@ -204,7 +223,7 @@ describe('recompute', () => {
     expect(await store.loadItems()).toHaveLength(1);
   });
 
-  it('remembers the highest number of mac jobs seen running while one waited', async () => {
+  it('learns the number of mac jobs that run while one waits', async () => {
     const live = { conclusion: null, completedAt: null };
     const r = run({ status: 'in_progress', ...live });
     await store.upsertRun(r);

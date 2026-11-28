@@ -123,8 +123,7 @@ export function createGithubApp(config: {
     for (const c of commits.slice().reverse()) {
       const m = SESSION_TRAILER.exec(c.commit.message);
       if (m?.[1]) {
-        const current = (await store.getPr(repo, number)) ?? pr;
-        await store.upsertPr({ ...current, sessionId: m[1] });
+        await store.patchPr(repo, number, { sessionId: m[1] });
         return;
       }
     }

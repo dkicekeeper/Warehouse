@@ -61,6 +61,8 @@ GitHub Apps → New GitHub App:
   Metadata — Read-only
 - **Account permissions:** никаких (для входа достаточно публичного id аккаунта)
 - **Subscribe to events:** Pull request, Push, Workflow run, Workflow job
+  (по желанию ещё Repository: переименование репозитория применится сразу; без него его подхватит
+  сверка раз в 14 минут — по id репозитория)
 - **Where can this app be installed:** Only on this account
 
 После создания: записать **App ID** и **Client ID**, сгенерировать **Client secret** и

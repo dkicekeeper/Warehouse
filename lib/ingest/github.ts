@@ -6,6 +6,7 @@ import type { Store } from '@/lib/store/store';
 // The same objects arrive in webhooks and from the REST API, so one set of readers serves both.
 
 const Repository = z.object({
+  id: z.number().int().optional(),
   full_name: z.string(),
   name: z.string().optional(),
   default_branch: z.string().optional(),
@@ -58,10 +59,24 @@ const toStatus = (s: string | null | undefined): RunStatus =>
 const when = (s: string | null | undefined): Date | null => (s ? new Date(s) : null);
 
 export async function registerRepo(store: Store, repo: z.infer<typeof Repository>): Promise<void> {
+  // A repository GitHub knows by the same id under another name was renamed: move it, so it keeps
+  // its project and history instead of starting a new project beside an empty old one.
+  if (repo.id !== undefined) {
+    // Before migration 0005 the column is not there: the repository is still registered by name.
+    const byId = await store.getRepoByGithubId(repo.id).catch(() => null);
+    if (byId && byId.fullName !== repo.full_name) await store.renameRepo(byId.fullName, repo.full_name);
+  }
   const name = repo.name ?? repo.full_name.split('/')[1] ?? repo.full_name;
   const known = await store.getRepo(repo.full_name);
   await store.ensureRepo(repo.full_name, repo.default_branch ?? known?.defaultBranch ?? 'main', name);
+  if (repo.id !== undefined) await store.setRepoGithubId(repo.full_name, repo.id).catch(() => {});
 }
+
+const RenamedEvent = z.object({
+  action: z.literal('renamed'),
+  changes: z.object({ repository: z.object({ name: z.object({ from: z.string() }) }) }),
+  repository: Repository,
+});
 
 /**
  * Stores a pull request as GitHub describes it. Events can arrive late and out of order, so a
@@ -151,7 +166,7 @@ async function refreshPrChecks(store: Store, repo: string, headSha: string): Pro
   if (prs.length === 0) return;
   const checks = checksFromRuns(await store.listRunsByHead(repo, headSha));
   for (const pr of prs) {
-    if (pr.checks !== checks) await store.upsertPr({ ...pr, checks });
+    if (pr.checks !== checks) await store.patchPr(repo, pr.number, { checks });
   }
 }
 
@@ -190,6 +205,16 @@ export async function applyGithubEvent(store: Store, event: string, payload: unk
   const repo = repository.full_name;
 
   switch (event) {
+    case 'repository': {
+      const renamed = RenamedEvent.safeParse(payload);
+      if (!renamed.success) return;
+      const owner = repo.split('/')[0];
+      const from = `${owner}/${renamed.data.changes.repository.name.from}`;
+      // Repositories stored before their id was known are found by the old name.
+      if ((await store.getRepo(from)) && !(await store.getRepo(repo))) await store.renameRepo(from, repo);
+      await registerRepo(store, repository);
+      return;
+    }
     case 'pull_request': {
       if (!GithubPr.safeParse(data.pull_request).success) return;
       await registerRepo(store, repository);
@@ -215,11 +240,16 @@ export async function applyGithubEvent(store: Store, event: string, payload: unk
       // A push to the default branch may have changed the project's docs: read them at the next tick.
       const known = await store.getRepo(repo);
       // Never at the price of the push itself: the half-hourly full read covers a mark that failed.
-      if (known && known.defaultBranch === branch) await store.markDocsDirty(repo).catch(() => {});
+      if (known && known.defaultBranch === branch) {
+        await store.markDocsDirty(repo).catch(() => {});
+        // GitHub computes «can merge» lazily and does not resend it when the base moves: until the
+        // resync reads each PR again, it is unknown, and no PR shows «готов к мержу» on a stale value.
+        await store.forgetMergeable(repo);
+      }
       const pr = await store.findOpenPr(repo, branch);
       if (!pr || pr.headSha === push.data.after) return;
       // The pull_request event with the details follows; until then nothing about the new head is known.
-      await store.upsertPr({ ...pr, headSha: push.data.after, mergeable: null, checks: 'pending' });
+      await store.patchPr(repo, pr.number, { headSha: push.data.after, mergeable: null, checks: 'pending' });
       return;
     }
     default:

@@ -36,11 +36,16 @@ export async function handleGithubWebhook(req: Request, deps: GithubWebhookDeps)
     return empty(400);
   }
 
+  let recorded = false;
   try {
     if ((await deps.store.recordEvent('github_webhook', delivery, payload, deps.now)) === 'duplicate') return empty(200);
+    recorded = true;
     await applyGithubEvent(deps.store, event, payload, deps.now);
     await deps.store.touchSource('github_webhook', deps.now, true);
   } catch (err) {
+    // GitHub does not retry on its own, but a redelivery (by hand, or by the resync) carries the
+    // same delivery id: it must be applied, not dropped as already seen.
+    if (recorded) await deps.store.forgetEvent('github_webhook', delivery).catch(() => {});
     await deps.store
       .touchSource('github_webhook', deps.now, false, err instanceof Error ? err.message : 'ошибка обработки')
       .catch(() => {});

@@ -5,6 +5,8 @@ import type { Job, Project, PullRequest, Repo, Run, Session, Settings, Snapshot 
 
 export type SourceName = 'github_webhook' | 'github_resync' | 'session_hook' | 'reconcile' | 'heartbeat' | 'docs_sync';
 
+export type PrPatch = Partial<Pick<PullRequest, 'checks' | 'headSha' | 'mergeable' | 'sessionId'>>;
+
 export interface SourceHealth {
   source: SourceName;
   lastOkAt: Date | null;
@@ -67,6 +69,22 @@ export interface Store {
    */
   adoptSessionsFromPrs(): Promise<void>;
   upsertPr(pr: PullRequest): Promise<void>;
+  /**
+   * Changes only the given fields of a stored PR. Writers that know one part of a PR (its checks,
+   * a new head after a push, the session from a commit trailer) use this, so two of them at once
+   * never overwrite each other's fields with a stale copy.
+   */
+  patchPr(repo: string, number: number, patch: PrPatch): Promise<void>;
+  /** «Can merge» of every open PR of the repository becomes unknown: its default branch moved. */
+  forgetMergeable(repo: string): Promise<void>;
+  /** The stored repository with this GitHub id, under whatever name it was stored. */
+  getRepoByGithubId(githubId: number): Promise<Repo | null>;
+  setRepoGithubId(fullName: string, githubId: number): Promise<void>;
+  /**
+   * The owner renamed a repository: everything stored under the old name moves to the new one,
+   * and the repository keeps its project.
+   */
+  renameRepo(from: string, to: string): Promise<void>;
   upsertRun(run: Run): Promise<void>;
   upsertJob(job: Job): Promise<void>;
   /** Registers a repository; a repository nobody has seen gets a project named `projectName`. */
@@ -86,6 +104,8 @@ export interface Store {
 
   touchSource(source: SourceName, at: Date, ok: boolean, note?: string | null): Promise<void>;
   recordEvent(source: SourceName, deliveryId: string, payload: unknown, now: Date): Promise<'new' | 'duplicate'>;
+  /** Forgets a delivery whose apply failed, so the sender's retry is applied, not dropped as a duplicate. */
+  forgetEvent(source: SourceName, deliveryId: string): Promise<void>;
   pruneEvents(olderThan: Date): Promise<void>;
 }
 

@@ -149,6 +149,23 @@ describe('pull requests, runs and jobs', () => {
     expect(await store.getPr('o/r', 999)).toBeNull();
   });
 
+  it('two writers of one PR keep each other\'s fields: a patch touches only its own', async () => {
+    const p = pr({ number: 7, checks: 'pending', sessionId: null });
+    await store.upsertPr(p);
+    // Both writers read the row before either wrote: each holds the stale copy.
+    await store.patchPr('o/r', 7, { checks: 'success' });
+    await store.patchPr('o/r', 7, { sessionId: 'session_abc' });
+    expect(await store.getPr('o/r', 7)).toMatchObject({ checks: 'success', sessionId: 'session_abc', title: p.title });
+  });
+
+  it('a full description without a session keeps the session found meanwhile', async () => {
+    const p = pr({ number: 8, sessionId: null });
+    await store.upsertPr(p);
+    await store.patchPr('o/r', 8, { sessionId: 'session_abc' });
+    await store.upsertPr({ ...p, title: 'renamed' });
+    expect(await store.getPr('o/r', 8)).toMatchObject({ title: 'renamed', sessionId: 'session_abc' });
+  });
+
   it('upsert overwrites', async () => {
     const p = pr({ number: 3 });
     await store.upsertPr(p);
@@ -157,7 +174,7 @@ describe('pull requests, runs and jobs', () => {
     expect(await store.findOpenPr('o/r', p.branch)).toBeNull();
   });
 
-  it('the snapshot holds open PRs, live runs and jobs, the last day of runs, and default-branch push runs', async () => {
+  it('the snapshot holds open PRs, live runs and jobs, the last day of runs, and the latest decisive default-branch push run of each workflow, however old', async () => {
     await store.ensureRepo('o/r', 'main', 'R');
     const open = pr({ number: 1 });
     const merged = pr({ number: 2, state: 'merged' });
@@ -166,14 +183,19 @@ describe('pull requests, runs and jobs', () => {
     const oldBranch = run({ createdAt: minutesAgo(3 * 1440) });
     const oldMain = run({ branch: 'main', conclusion: 'failure', createdAt: minutesAgo(3 * 1440) });
     const ancientMain = run({ branch: 'main', createdAt: minutesAgo(20 * 1440) });
+    // Red for three weeks and still the latest decisive run of its workflow: it stays on the board.
+    const stillRed = run({ branch: 'main', workflow: 'Deploy', conclusion: 'failure', createdAt: minutesAgo(21 * 1440), completedAt: minutesAgo(21 * 1440 - 20) });
+    const cancelledAfter = run({ branch: 'main', workflow: 'Deploy', conclusion: 'cancelled', createdAt: minutesAgo(19 * 1440), completedAt: minutesAgo(19 * 1440 - 5) });
+    // A workflow that has not run for 40 days was deleted: its last red is not shown.
+    const deletedRed = run({ branch: 'main', workflow: 'Old', conclusion: 'failure', createdAt: minutesAgo(40 * 1440), completedAt: minutesAgo(40 * 1440 - 20) });
     const liveJob = job({ status: 'in_progress', conclusion: null, completedAt: null });
     const doneJob = job();
     for (const p of [open, merged]) await store.upsertPr(p);
-    for (const r of [liveOld, recent, oldBranch, oldMain, ancientMain]) await store.upsertRun(r);
+    for (const r of [liveOld, recent, oldBranch, oldMain, ancientMain, stillRed, cancelledAfter, deletedRed]) await store.upsertRun(r);
     for (const j of [liveJob, doneJob]) await store.upsertJob(j);
     const snap = await store.loadSnapshot(NOW);
     expect(snap.prs.map((p) => p.number)).toEqual([1]);
-    expect(snap.runs.map((r) => r.id).sort()).toEqual([liveOld.id, recent.id, oldMain.id].sort());
+    expect(snap.runs.map((r) => r.id).sort()).toEqual([liveOld.id, recent.id, oldMain.id, stillRed.id].sort());
     expect(snap.jobs.map((j) => j.id)).toEqual([liveJob.id]);
   });
 

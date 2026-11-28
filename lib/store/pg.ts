@@ -15,7 +15,7 @@ import {
   type Settings,
   type Snapshot,
 } from '@/lib/domain/types';
-import type { DocsState, SessionPatch, SourceHealth, SourceName, Store } from './store';
+import type { DocsState, PrPatch, SessionPatch, SourceHealth, SourceName, Store } from './store';
 import type { DocKind, ProjectDoc } from '@/lib/domain/docs';
 
 /** The one thing the store needs from a Postgres driver. */
@@ -233,10 +233,16 @@ export class PgStore implements Store {
         `select * from runs
           where status <> 'completed' or created_at > $1::timestamptz - interval '24 hours'
          union
-         select r.* from runs r
-           join repos p on p.full_name = r.repo and p.default_branch = r.branch
-          where r.event = 'push' and r.status = 'completed'
-            and r.created_at > $1::timestamptz - interval '14 days'`,
+         -- The latest decisive push run of each workflow on the default branch, however old:
+         -- «main красный» lasts as long as that run stays red. A workflow with no run for 30 days
+         -- was deleted or renamed; its last red is not the branch's state.
+         (select distinct on (r.repo, r.workflow) r.* from runs r
+            join repos p on p.full_name = r.repo and p.default_branch = r.branch
+           where r.event = 'push' and r.status = 'completed'
+             and r.conclusion in ('success', 'failure', 'timed_out')
+             and exists (select 1 from runs x where x.repo = r.repo and x.workflow = r.workflow
+                          and x.created_at > $1::timestamptz - interval '30 days')
+           order by r.repo, r.workflow, r.completed_at desc nulls last)`,
         [n],
       ),
       this.sql.query(`select * from jobs where status <> 'completed'`),
@@ -448,9 +454,82 @@ export class PgStore implements Store {
        on conflict (repo, number) do update set
          title = excluded.title, branch = excluded.branch, head_sha = excluded.head_sha, state = excluded.state,
          draft = excluded.draft, mergeable = excluded.mergeable, checks = excluded.checks,
-         opened_at = excluded.opened_at, updated_at = excluded.updated_at, session_id = excluded.session_id`,
+         opened_at = excluded.opened_at, updated_at = excluded.updated_at,
+         -- A session found from a commit trailer meanwhile is never lost to a description without one.
+         session_id = coalesce(excluded.session_id, pull_requests.session_id)`,
       [p.repo, p.number, p.title, p.branch, p.headSha, p.state, p.draft, p.mergeable, p.checks, ts(p.openedAt), ts(p.updatedAt), p.sessionId],
     );
+  }
+
+  async getRepoByGithubId(githubId: number): Promise<Repo | null> {
+    const [r] = await this.sql.query('select * from repos where github_id = $1', [githubId]);
+    return r ? toRepo(r) : null;
+  }
+
+  async setRepoGithubId(fullName: string, githubId: number): Promise<void> {
+    await this.sql.query('update repos set github_id = $2 where full_name = $1 and github_id is distinct from $2', [fullName, githubId]);
+  }
+
+  async renameRepo(from: string, to: string): Promise<void> {
+    if (from === to) return;
+    // One DO block runs as one statement: a rename half done would leave a repository's rows split
+    // between two names. A block takes no parameters, so the names go in as literals: GitHub's names
+    // are letters, digits, `.`, `-` and `_`, checked here, and quoted all the same.
+    for (const n of [from, to]) if (!/^[\w.-]+\/[\w.-]+$/.test(n)) throw new Error(`bad repository name: ${n}`);
+    const lit = (s: string) => "'" + s.replace(/'/g, "''") + "'";
+    await this.sql.exec(
+      `do $wh_rename$
+       declare
+         o repos%rowtype;
+         f text := ${lit(from)};
+         t text := ${lit(to)};
+       begin
+         select * into o from repos where full_name = f for update;
+         if not found then
+           return;
+         end if;
+         -- The id moves with the name; free it first, it is unique.
+         update repos set github_id = null where full_name = f;
+         insert into repos (full_name, project_id, default_branch, docs_tree_sha, docs_dirty, docs_synced_at, github_id)
+           values (t, o.project_id, o.default_branch, o.docs_tree_sha, true, o.docs_synced_at, o.github_id)
+           on conflict (full_name) do update set project_id = excluded.project_id, github_id = excluded.github_id,
+             docs_dirty = true;
+         -- A row already under the new name wins; the old copy of it goes.
+         delete from pull_requests x where x.repo = f
+           and exists (select 1 from pull_requests n where n.repo = t and n.number = x.number);
+         update pull_requests set repo = t where repo = f;
+         update runs set repo = t where repo = f;
+         update jobs set repo = t where repo = f;
+         update sessions set repo = t where repo = f;
+         -- Items keep their identity (and their Telegram message) under the new name; a live item the
+         -- new name already has wins over the old one.
+         update items x set status = 'resolved', resolved_at = now()
+           where x.repo = f and x.status <> 'resolved'
+             and exists (select 1 from items n where n.status <> 'resolved' and n.key = replace(x.key, f, t) and n.id <> x.id);
+         update items set key = replace(key, f, t), repo = t where repo = f;
+         update items set pr_repo = t where pr_repo = f;
+         delete from project_docs d where d.repo = f
+           and exists (select 1 from project_docs n where n.repo = t and n.path = d.path);
+         update project_docs set repo = t where repo = f;
+         delete from repos where full_name = f;
+       end $wh_rename$;`,
+    );
+  }
+
+  async forgetMergeable(repo: string): Promise<void> {
+    await this.sql.query("update pull_requests set mergeable = null where repo = $1 and state = 'open'", [repo]);
+  }
+
+  async patchPr(repo: string, number: number, patch: PrPatch): Promise<void> {
+    const columns: Record<keyof PrPatch, string> = { checks: 'checks', headSha: 'head_sha', mergeable: 'mergeable', sessionId: 'session_id' };
+    const keys = (Object.keys(patch) as (keyof PrPatch)[]).filter((k) => k in columns);
+    if (keys.length === 0) return;
+    const sets = keys.map((k, i) => columns[k] + ' = $' + String(i + 3));
+    await this.sql.query('update pull_requests set ' + sets.join(', ') + ' where repo = $1 and number = $2', [
+      repo,
+      number,
+      ...keys.map((k) => patch[k] ?? null),
+    ]);
   }
 
   async upsertRun(r: Run): Promise<void> {
@@ -578,6 +657,10 @@ export class PgStore implements Store {
       [source, deliveryId, JSON.stringify(payload ?? null), ts(now)],
     );
     return rows.length > 0 ? 'new' : 'duplicate';
+  }
+
+  async forgetEvent(source: SourceName, deliveryId: string): Promise<void> {
+    await this.sql.query('delete from events where source = $1 and delivery_id = $2', [source, deliveryId]);
   }
 
   async pruneEvents(olderThan: Date): Promise<void> {

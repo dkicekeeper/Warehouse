@@ -3,6 +3,7 @@ import { reconcileItems } from '@/lib/domain/items';
 import { planNotifications } from '@/lib/domain/notify';
 import { observeLimit } from '@/lib/domain/queue';
 import type { Store } from '@/lib/store/store';
+import { MessageGone } from '@/lib/telegram/client';
 
 export interface Notifier {
   send(chatId: string, html: string): Promise<{ messageId: number }>;
@@ -26,10 +27,15 @@ export async function recompute(
   const { now, notifier, baseUrl } = deps;
   const result: RecomputeResult = { sent: 0, edited: 0, failed: 0 };
 
-  const [snap, settings, before] = await Promise.all([store.loadSnapshot(now), store.getSettings(), store.loadItems()]);
+  const [snap, settings, before, history] = await Promise.all([
+    store.loadSnapshot(now),
+    store.getSettings(),
+    store.loadItems(),
+    store.loadJobHistory(now),
+  ]);
   await store.applyItemChanges(reconcileItems(before, computeAttention(snap, now, settings), now), now);
 
-  const observed = observeLimit(snap.jobs, settings.observedMacosLimit);
+  const observed = observeLimit(snap.jobs, history, settings.observedMacosLimit, now);
   if (observed !== settings.observedMacosLimit) await store.patchSettings({ observedMacosLimit: observed });
 
   const chatId = settings.telegramChatId;
@@ -44,7 +50,12 @@ export async function recompute(
         await notifier.edit(chatId, action.messageId, action.text);
         await store.markNotified([action.itemId], now, action.messageId, { [action.itemId]: action.text });
         result.edited++;
-      } catch {
+      } catch (err) {
+        if (err instanceof MessageGone) {
+          // The owner deleted it: keep the item, forget the message, so no tick edits it again.
+          await store.markNotified([action.itemId], now, null, { [action.itemId]: action.text }).catch(() => {});
+          continue;
+        }
         result.failed++;
       }
       continue;

@@ -201,11 +201,18 @@ create table project_docs (
 create index project_docs_kind on project_docs (kind, status)
 `;
 
+/** GitHub's id of a repository: it stays when the owner renames the repository. */
+const REPO_GITHUB_ID = `
+alter table repos add column github_id bigint;
+create unique index repos_github_id on repos (github_id) where github_id is not null
+`;
+
 export const MIGRATIONS: Migration[] = [
   { name: '0001_schema', sql: SCHEMA },
   { name: '0002_seed_projects', sql: SEED_PROJECTS },
   { name: '0003_sessions_valid_after', sql: SESSIONS_VALID_AFTER },
   { name: '0004_project_docs', sql: PROJECT_DOCS },
+  { name: '0005_repo_github_id', sql: REPO_GITHUB_ID },
 ];
 
 const TAG = '$wh_migration$';
