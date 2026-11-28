@@ -86,7 +86,8 @@ describe('summarize', () => {
     ...each(DALADA_APP, 'installs', 18, 23, 2),
     ...each('424242', 'installs', 18, 24, 1),
   ];
-  const [tenra, dalada, orphan] = summarize(rows, owner, 7, NOW);
+  const all = summarize(rows, owner, 7, NOW);
+  const [tenra, dalada, orphan] = [all[0]!, all[1]!, all[2]!];
 
   it('sums the period that ends yesterday and compares it with the one before', () => {
     expect(tenra.name).toBe('Tenra');
@@ -103,7 +104,7 @@ describe('summarize', () => {
   });
 
   it('without net revenue the gross one is shown, marked so', () => {
-    const [p] = summarize([d(RC, 'revenue_gross', '2026-11-21', 20)], owner, 7, NOW);
+    const p = summarize([d(RC, 'revenue_gross', '2026-11-21', 20)], owner, 7, NOW)[0]!;
     expect(p.revenue).toMatchObject({ value: { amount: 20, currency: 'USD' }, net: false });
   });
 
@@ -141,7 +142,7 @@ describe('summarize', () => {
   });
 
   it('prices are not mixed across currencies: spend in KZT over trials stays KZT', () => {
-    const [p] = summarize([...each(TENRA_APP, 'ad_spend', 18, 24, 1000, 'KZT'), d(RC, 'trials_new', '2026-11-20', 2)], owner, 7, NOW);
+    const p = summarize([...each(TENRA_APP, 'ad_spend', 18, 24, 1000, 'KZT'), d(RC, 'trials_new', '2026-11-20', 2)], owner, 7, NOW)[0]!;
     expect(p.costPerTrial).toEqual({ amount: 3500, currency: 'KZT' });
   });
 });
